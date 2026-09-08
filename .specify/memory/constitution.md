@@ -1,36 +1,43 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 1.0.0 → 2.0.0
-Rationale: Backward-incompatible redefinition of the LLM-integration clause in
-Principle I. v1.0.0 mandated `@langchain/anthropic` with fixed model IDs
-(`claude-sonnet-5` / `claude-opus-5`); v2.0.0 routes every graph-node model call
-through OpenRouter and allows any model. Code written to the v1 rule violates the
-v2 rule, so this is a MAJOR bump.
+Version change: 2.0.0 → 2.0.1
+Rationale: PATCH — clarifies Principle VI to match the session model the spec
+settled on during clarification. v2.0.0 said "session identity is a `threadId` in
+the URL combined with `localStorage`"; the project chose a device-private model
+where an anonymous client identifier in `localStorage` is the sole credential and
+no session identifier ever appears in the URL. Same "no auth framework" intent,
+accurate mechanism — no change in obligations, so PATCH. Also drops "compare"
+from Principle VI's illustrative action list (the spec puts branch comparison out
+of scope for v1).
 
 Modified principles:
-  - I. Fixed Technology Stack — "LLM integration" bullet rewritten (Anthropic SDK
-    + fixed models → OpenRouter as sole integration point, any model); rationale
-    extended to state that model choice is deliberately not fixed.
+  - VI. Session & UI Boundaries — first bullet rewritten (threadId-in-URL →
+    anonymous client identifier in `localStorage`, no session id in the URL,
+    sessions private to the creating browser); right-panel example list no longer
+    names "compare".
 
-Modified sections:
-  - Technology & Configuration Constraints — required env var `ANTHROPIC_API_KEY`
-    → `OPENROUTER_API_KEY`; "Model routing" rewritten around a shared
-    model-config module keyed to OpenRouter model IDs.
+Modified sections: none
 
 Added sections: none
 Removed sections: none
 
 Templates requiring updates:
-  - .specify/templates/plan-template.md          ⚠ pending (not present — run `specify init` or create on first `/speckit-plan`)
-  - .specify/templates/spec-template.md          ⚠ pending (not present)
-  - .specify/templates/tasks-template.md         ⚠ pending (not present)
-  - .specify/templates/commands/*.md             ⚠ pending (not present)
-  - RECOMMENDATION.md                            ✅ updated (§1 LLM row, §3 critique node, §8 build order, §10 env vars now OpenRouter)
+  - .specify/templates/plan-template.md          ✅ present (created during /speckit-plan)
+  - .specify/templates/spec-template.md          ✅ present (created during /speckit-specify)
+  - .specify/templates/tasks-template.md         ✅ present (created during /speckit-tasks)
+  - .specify/templates/commands/*.md             n/a (not used in this project)
+  - RECOMMENDATION.md                            ✅ consistent
+  - specs/001-recipe-agent/{spec,plan,tasks,data-model}.md + contracts/api.md + CLAUDE.md  ✅ updated alongside this amendment
   - README.md                                    ⚠ pending (not present — create with a Constitution reference when scaffolding)
 
-Follow-up TODOs: none. Ratification date preserved (2026-09-01); Last Amended set
-to 2026-09-02.
+Prior amendment (2.0.0): MAJOR — Principle I LLM-integration clause moved from
+`@langchain/anthropic` + fixed model IDs to OpenRouter as the sole integration
+point via `@langchain/openai`; `ANTHROPIC_API_KEY` → `OPENROUTER_API_KEY`; model
+routing via a shared model-config module.
+
+Follow-up TODOs: none. Ratification date preserved (2026-09-01); Last Amended
+2026-09-06.
 -->
 
 # Recipe Agent Constitution
@@ -138,12 +145,16 @@ function limit.
 
 ### VI. Session & UI Boundaries
 
-- v1 has NO authentication framework. Session identity is a `threadId` in the URL
-  combined with `localStorage`. Introducing auth is a constitution amendment.
+- v1 has NO authentication framework. Session ownership is an anonymous,
+  high-entropy client identifier held only in `localStorage` and sent with every
+  request; no session identifier appears in the URL, and a session is reachable
+  only from the browser that created it (not shareable, no cross-device access).
+  Introducing auth — or any cross-device/sharing mechanism — is a constitution
+  amendment.
 - The application layout is a fixed three-panel structure:
   - **Left**: vertical branch-tree timeline, built from checkpoint `parentConfig`.
   - **Center**: editable state view for the selected checkpoint.
-  - **Right**: action controls (e.g. edit & fork, play from here, compare).
+  - **Right**: action controls (e.g. edit & fork, play from here, retry).
 - Design tokens (color, spacing, type scale, radii) live in a single shared
   source consumed by the whole UI. Component-local hard-coded style values that
   duplicate a token are prohibited.
@@ -211,4 +222,4 @@ lets the visual design be applied without re-architecting the layout.
   repo, the first command that needs one MUST create it in a constitution-aligned
   form.
 
-**Version**: 2.0.0 | **Ratified**: 2026-09-01 | **Last Amended**: 2026-09-02
+**Version**: 2.0.1 | **Ratified**: 2026-09-01 | **Last Amended**: 2026-09-06

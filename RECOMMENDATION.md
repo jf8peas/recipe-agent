@@ -16,8 +16,13 @@ checkpoint, edit it, and replay the agents from that point.
 | Checkpointer | **`@langchain/langgraph-checkpoint-postgres` + Neon Postgres** | This is the whole feature. Durable state history that survives cold starts, with native fork/resume. |
 | Structured output | **Zod** schemas on each node | Keeps recipe state editable as forms, not free text. |
 
-Skip auth for v1 — a `threadId` in the URL + `localStorage` is enough. Add
-NextAuth later if you want saved recipe books.
+Skip auth for v1. The access model is **device-private**: a `clientId` minted on
+first load and kept in `localStorage` owns every thread that browser creates and
+is sent with every request; the server rejects requests for threads owned by a
+different `clientId`. No sharing, no cross-device. **No `threadId` in the page
+URL** — the app is one `/` route that switches between the session list and a
+session client-side; the active `threadId` lives in `localStorage`. Add NextAuth
+later if you want accounts and cross-device recipe books.
 
 ---
 
@@ -48,33 +53,60 @@ Forks all live in the **same thread**, linked by parent pointers — so the bran
 ## 3. Agent graph
 
 ```
-parseIngredients → proposeDirections → draftRecipe → critique ⇄ refine → finalize
+                             ┌─ any invalid ──▶ ingredientError (END)
+parseIngredients ──(check)───┤
+                             └─ all valid ────▶ proposeDirections → draftRecipe
+                                                → critique ⇄ refine → finalize (END)
 ```
 
-- **parseIngredients** – normalize items, quantities, categories; flag pantry staples.
+- **parseIngredients** – normalize items, quantities, categories; flag pantry
+  staples; classify each ingredient as usable / not-usable with a reason.
+- **(conditional edge)** – if any ingredient is not usable → route to
+  `ingredientError`; else → `proposeDirections`.
+- **ingredientError** – terminal error node. No recipe content. State carries the
+  rejected ingredients + reasons. User recovers by editing `ingredients` on this
+  checkpoint, forking, and replaying (parse re-runs and re-checks).
 - **proposeDirections** – 2–3 dish directions given ingredients + constraints (cuisine, time, servings, diet).
 - **draftRecipe** – full recipe: steps, timings, techniques, what to buy.
 - **critique** (`MODELS.critique` — a stronger model) – feasibility, flavor balance, missing steps. Structured verdict.
 - **refine** – apply critique. Conditional edge loops critique ⇄ refine up to N times.
 - **finalize** – scale, format, rough nutrition.
 
+**Pre-flight (not a graph node):** before the graph is invoked, the start
+request is rejected if the ingredient list is empty or longer than
+`MAX_INGREDIENTS` (env var) — the user is prompted to add one or trim. No
+session/thread is created in that case.
+
 Set `interruptAfter: ["*"]` (or per-node) so the graph **pauses after every
 node**. The client drives it forward one step at a time — which is exactly the
-back-and-forth UX, and it sidesteps Vercel function timeouts.
+back-and-forth UX, and it sidesteps Vercel function timeouts. A "pause between
+stages" toggle (default on) lets the client instead auto-advance by chaining the
+same one-step calls, stopping at `finalize`, `ingredientError`, a failure, or a
+user Pause.
 
 State schema (each a plain channel so it's editable):
-`ingredients`, `constraints`, `directions`, `recipeDraft`, `critiques`, `finalRecipe`.
+`ingredients` (incl. per-item usable/reason classification), `constraints`,
+`directions`, `recipeDraft`, `critiques`, `finalRecipe`, plus an `outcome` marker
+(`in-progress` | `finalized` | `ingredient-error` | `stage-failure`).
 
 ---
 
 ## 4. API surface
 
+Every request carries the browser's **`clientId`** (an ~128-bit value minted on
+first load, kept in `localStorage`, sent as a header). The server owns each
+thread by the `clientId` that created it and rejects any request for a thread a
+different `clientId` owns — as a 404, not a 403. This is the whole access model:
+device-private, no auth, no sharing.
+
 ```
-POST /api/recipe/start          → new threadId, run to first interrupt, return state + checkpointId
+POST /api/recipe/start          → new threadId (owned by clientId), run to first interrupt
 POST /api/recipe/:tid/step      → resume from a checkpointId, run one node, return new state
 GET  /api/recipe/:tid/history   → getStateHistory → checkpoint list (client builds tree)
 GET  /api/recipe/:tid/state     → state at ?checkpointId=
 POST /api/recipe/:tid/fork      → updateState(checkpointId, patch) → new checkpointId
+POST /api/recipe/:tid/delete    → hard-delete the thread + all checkpoints
+GET  /api/recipe/mine           → threads owned by this clientId (rebuilds the list if localStorage was cleared)
 ```
 
 All on the **Node.js runtime** (`export const runtime = "nodejs"`), not Edge —
@@ -82,10 +114,20 @@ All on the **Node.js runtime** (`export const runtime = "nodejs"`), not Edge —
 connection string and cache the client/graph in module scope so warm invocations
 reuse it. Run `PostgresSaver.setup()` once via a migration script.
 
+Keep an `owner` table (`thread_id → client_id`, `created_at`, `last_activity`,
+`title`) alongside the LangGraph checkpoint tables. Scope every query by
+`thread_id` **and** `client_id`. A background job purges threads whose
+`last_activity` is older than `SESSION_PURGE_DAYS` (also mops up threads orphaned
+when a `clientId` is lost).
+
 ---
 
 ## 5. UI shape (the Claude Design work)
 
+- **Header (all screens):** app title, an **author** link
+  (`https://www.linkedin.com/in/john-fong-04b7a120/`) and a **feedback** link
+  (`https://github.com/jf8peas/recipe-agent/issues`), plus the "pause between
+  stages" toggle. External links open in a new tab.
 - **Left:** branch tree of checkpoints (node name, timestamp, fork markers).
 - **Center:** rendered state for the selected checkpoint — ingredient list,
   directions, recipe steps — each field editable.
@@ -176,6 +218,30 @@ exists.
   run in one request on the Hobby plan.
 - **Runtime** — Node.js runtime, not Edge, for any route touching `pg`.
 - **`PostgresSaver.setup()`** — must run once before first use (migration script).
+- **Spend / limit errors are not stage failures** — OpenRouter returning 402
+  (key spend cap hit) or 429, or your own per-client / global daily caps, must
+  surface as a distinct "usage limit — try again later" message that writes *no*
+  checkpoint (spec FR-061–FR-066). Detect the provider's cap response explicitly
+  and don't route it into the generic stage-failure path.
+- **Concurrency is a client-side lock, not a server concern** — device-private
+  means only one browser reaches a thread; the sole race is two tabs. Guard it
+  with a `BroadcastChannel` in-flight lock that disables the advance controls in
+  all tabs (spec FR-059). No DB unique constraint, no optimistic-concurrency
+  layer. A stray double-advance would just make a deletable extra branch.
+- **Stage failures DO get a checkpoint** — write a distinct non-terminal
+  `stage-failure` state (spec FR-050–FR-054) that the user can retry or fork
+  from; a successful retry is a sibling of the failure.
+- **Cancel = `AbortController`** on the step fetch, passed into the OpenRouter
+  call so an in-flight generation is actually stopped (spec FR-072–FR-075). A
+  cancelled stage writes nothing. No streaming — each step is a plain JSON
+  request/response; the UI shows a spinner + elapsed timer, not partial output
+  (FR-009a).
+- **Save-after-run failure ≠ re-run** — if the node produced a result but the
+  `PostgresSaver` write fails, retry the write, then hold the result client-side
+  with a "retry save" button (spec FR-080–FR-083). Never re-invoke the node — the
+  model call is already paid for.
+- **WCAG 2.2 AA is a requirement** (spec FR-084/FR-085) — the timeline needs real
+  keyboard nav and ARIA (entry kind as text, not just color); budget for it.
 - **LangGraph.js vs Python** — Python's tooling (LangGraph Studio) is more mature
   for *visualizing* time-travel, but for a Vercel app the JS library is the right
   call; the visualization is custom-built here anyway.
@@ -187,4 +253,12 @@ exists.
 ```
 OPENROUTER_API_KEY=
 DATABASE_URL=            # Neon pooled connection string
+MAX_INGREDIENTS=50        # pre-flight cap; start is blocked above this
+MAX_REFINE_CYCLES=2       # critique ⇄ refine loop ceiling
+MAX_STAGES_PER_SESSION=60 # per-session stage-execution cap → session goes read-only
+SESSION_PURGE_DAYS=90     # inactivity purge window
+RATE_LIMIT_PER_CLIENT=    # short-window request rate per client
+DAILY_STAGES_PER_CLIENT=  # rolling 24h stage-execution ceiling per client
+DAILY_STAGES_GLOBAL=      # rolling 24h global stage-execution cap (budget backstop)
+STAGE_TIMEOUT_MS=         # hard ceiling per stage → stage-failure on timeout
 ```
