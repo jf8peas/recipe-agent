@@ -1,5 +1,14 @@
 # Recipe Agent — Build Recommendation
 
+> **Superseded as the source of truth** by `specs/001-recipe-agent/` (spec.md,
+> plan.md, data-model.md, contracts/api.md, research.md) and the
+> [constitution](.specify/memory/constitution.md), now at **v3.0.0**. This
+> document predates the formal spec-kit process and the confirmed
+> one-LangGraph-thread-per-branch requirement (research R3, T016 spike) — where
+> it still says `:tid`/`threadId` as if one thread were the whole session, that
+> is out of date. Kept for the earlier architectural narrative; do not
+> implement against it directly.
+
 A Vercel webapp that uses LangGraph agents to build a recipe from a list of
 ingredients, with **time-travel**: inspect the agent's state history, pick any
 checkpoint, edit it, and replay the agents from that point.

@@ -92,25 +92,33 @@ FinalRecipe extends RecipeDraft {
 
 ---
 
-## 2. Checkpoints (LangGraph-owned)
+## 2. Checkpoints (LangGraph-owned) — **one branch = one thread** (constitution v3.0.0, research R2/R3)
 
-Created by `PostgresSaver.setup()`. Not modified directly. Relevant read paths:
+Created by `PostgresSaver.setup()`. Not modified directly. A LangGraph
+`thread_id` now corresponds to exactly one **branch**, not one session — see
+§3's `branches` table for how branches relate to each other and to a session.
+Relevant read paths, scoped to a single thread/branch:
 
 | Concept | Source |
 |---|---|
 | checkpoint id | `snapshot.config.configurable.checkpoint_id` |
-| parent id | `snapshot.parentConfig?.configurable.checkpoint_id` |
+| parent id (within this branch only) | `snapshot.parentConfig?.configurable.checkpoint_id` |
 | producing stage | keys of `snapshot.metadata.writes` |
 | step index | `snapshot.metadata.step` |
 | pending next | `snapshot.next` (`[]` ⇒ terminal) |
 | created | `snapshot.createdAt` |
 
-**Timeline entry** (`/history` response item), derived:
+**Timeline entry** (unified `/history` response item — spans branches):
 
 ```
 TimelineEntry {
   checkpointId: string
-  parentCheckpointId: string | null
+  threadId: string             // which branch this entry belongs to
+  parentCheckpointId: string | null   // within the SAME thread only
+  isBranchRoot: boolean         // true for a branch's first checkpoint (no
+                                 // in-thread parent — its real parent is the
+                                 // branches row's forkedFromCheckpointId, on
+                                 // a DIFFERENT thread)
   stage: "parseIngredients" | … | "user-edit"
   step: number
   createdAt: string
@@ -118,6 +126,10 @@ TimelineEntry {
   isLeaf: boolean
 }
 ```
+
+`lib/tree.ts` builds the unified tree by parent-linking each `isBranchRoot`
+entry to its branch's `forkedFromCheckpointId` (looked up via the `branches`
+row for that `threadId`) instead of `parentCheckpointId` (research R2).
 
 ---
 
@@ -127,17 +139,34 @@ TimelineEntry {
 
 | Column | Type | Notes |
 |---|---|---|
-| `thread_id` | `text` PK | = LangGraph `thread_id` |
+| `session_id` | `text` PK | app-level id (32-byte base64url, minted by `/start`) — **not** a LangGraph thread id |
 | `client_id` | `text` NOT NULL | owner (spec FR-003a); indexed |
+| `root_thread_id` | `text` NOT NULL | the session's first/root branch — convenience pointer, also present as a row in `branches` |
 | `title` | `text` | derived from first accepted direction, or ingredient summary; user-renamable (nice-to-have) |
 | `created_at` | `timestamptz` | |
 | `last_activity` | `timestamptz` | bumped on any read or write (spec FR-057) |
-| `stage_count` | `int` NOT NULL default 0 | completed stage executions (spec FR-077) |
+| `stage_count` | `int` NOT NULL default 0 | completed stage executions **across every branch** of this session (spec FR-077) |
 | `status` | `text` NOT NULL default `'active'` | `active \| capped` |
 
 Index: `(client_id, last_activity desc)` for `/mine`.
-Transitions: `active → capped` when `stage_count >= MAX_STAGES_PER_SESSION`;
-deletion removes the row + checkpoints (spec FR-055).
+Transitions: `active → capped` when `stage_count >= MAX_STAGES_PER_SESSION`
+(checked across all branches); deletion removes the row + every branch's
+checkpoints (spec FR-055).
+
+### `branches` — **new in constitution v3.0.0**
+
+| Column | Type | Notes |
+|---|---|---|
+| `thread_id` | `text` PK | the LangGraph `thread_id` realizing this branch (research R3) |
+| `session_id` | `text` NOT NULL REFERENCES sessions | indexed |
+| `parent_thread_id` | `text` NULL REFERENCES branches(thread_id) | null for a session's root branch |
+| `forked_from_checkpoint_id` | `text` NULL | the checkpoint **on `parent_thread_id`** this branch diverged from; null for the root branch |
+| `created_at` | `timestamptz` NOT NULL default now() | |
+
+Index: `(session_id)` for "all branches of this session" (`/history`).
+A branch is created once, at fork time (or session start, for the root), and is
+never mutated. Deleting a session deletes every row here (and every
+corresponding LangGraph thread's checkpoints) for that `session_id`.
 
 ### `usage_events`
 
@@ -145,11 +174,12 @@ deletion removes the row + checkpoints (spec FR-055).
 |---|---|---|
 | `id` | `bigint` PK | |
 | `client_id` | `text` NOT NULL | indexed |
-| `thread_id` | `text` | nullable (start has no thread yet until created) |
+| `thread_id` | `text` | the branch a stage execution happened on; nullable (a `start` event has no thread yet) — diagnostic only, not used by limit checks |
 | `kind` | `text` | `stage \| start \| rejected-limit` |
 | `created_at` | `timestamptz` NOT NULL default now() | indexed |
 
-Limit checks (spec FR-061/FR-062):
+Limit checks (spec FR-061/FR-062) are all keyed by `client_id` (never
+`thread_id` — limits are per-client/global, not per-branch):
 - per-client short window: `count(*) where client_id=$1 and kind in ('stage','start') and created_at > now() - $RATE_WINDOW`
 - per-client 24 h: same, window 24 h, vs `DAILY_STAGES_PER_CLIENT`
 - global 24 h: `count(*) where kind='stage' and created_at > now() - '24h'` vs `DAILY_STAGES_GLOBAL`
@@ -165,10 +195,10 @@ Limit checks (spec FR-061/FR-062):
 | Key | Where | Purpose |
 |---|---|---|
 | `recipe-agent.clientId` | `localStorage` | owner credential, `X-Client-Id` header (spec FR-003) |
-| `recipe-agent.sessions` | `localStorage` | `[{ threadId, title, lastOpened }]` — on-device list (spec FR-004); rebuildable from `/mine` (spec FR-032) |
-| `recipe-agent.currentThreadId` | `localStorage` | the active session; restored on reload since there is no per-session URL (spec FR-003b) |
+| `recipe-agent.sessions` | `localStorage` | `[{ sessionId, title, lastOpened }]` — on-device list (spec FR-004); rebuildable from `/mine` (spec FR-032) |
+| `recipe-agent.currentSessionId` | `localStorage` | the active session (app-level `session_id`, constitution v3.0.0 — **not** a LangGraph thread id); restored on reload since there is no per-session URL (spec FR-003b) |
 | `recipe-agent.pauseBetweenStages` | `localStorage` | Step vs Auto-run (spec FR-034), default `true` |
-| in-memory only | React state | a held unsaved stage result (spec FR-081) |
+| in-memory only | React state | the active branch's `threadId` + selected `checkpointId` (derived from `/history`/`/state`); a held unsaved stage result (spec FR-081) |
 
 No session identifier ever appears in the page URL; navigation between the list
 and a session is client-side view switching (spec FR-003a/FR-003b).

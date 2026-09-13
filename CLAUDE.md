@@ -13,7 +13,7 @@ Active plan: [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md)
 - API contracts: [specs/001-recipe-agent/contracts/api.md](specs/001-recipe-agent/contracts/api.md)
 - Quickstart: [specs/001-recipe-agent/quickstart.md](specs/001-recipe-agent/quickstart.md)
 - Tasks: [specs/001-recipe-agent/tasks.md](specs/001-recipe-agent/tasks.md)
-- Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v2.0.1)
+- Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v3.0.0)
 <!-- SPECKIT END -->
 
 ## Non-negotiables (from the constitution)
@@ -39,6 +39,14 @@ Active plan: [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md)
   session identifier ever appears in a page URL; the app is a single `/` route
   that switches between the session list and a session client-side. No sharing,
   no cross-device.
+- **One LangGraph thread per branch (v3.0.0).** A session can have many
+  branches; each is its OWN LangGraph `thread_id`, linked by the app's
+  `branches` table. **Never** create a second child of an already-branched-from
+  checkpoint within one thread via `updateState` — confirmed data-loss bug in
+  `@langchain/langgraph-checkpoint-postgres` (1.0.0–1.0.5, research R3, T016
+  spike). Fork = seed a brand-new thread by replaying the parent branch's
+  recorded outputs, then diverge with the edit. Retry = plain `invoke` on a
+  historical checkpoint in the SAME thread (confirmed safe).
 
 ## Model routing
 
@@ -48,7 +56,7 @@ IDs.
 
 ## Current status
 
-Spec, plan, tasks, and analyze complete; constitution at v2.0.1. Next:
-`/speckit-implement`. Implementation order starts with
-`scripts/spike-timetravel.ts` (de-risk the `updateState`/`asNode` fork mechanism
-— research R3), which only needs `lib/db/pool.ts` + `scripts/migrate.ts` first.
+Spec, plan, tasks in progress (`/speckit-implement`); constitution at v3.0.0.
+T001–T016 done (setup, DB layer, app shell, time-travel spike). The spike
+surfaced the one-thread-per-branch requirement above — plan/tasks/data-model/
+contracts updated accordingly before continuing past Foundational.

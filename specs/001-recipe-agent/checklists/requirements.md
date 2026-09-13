@@ -107,7 +107,21 @@
   `maxDuration=60`" note added to tasks.md (D1); plan.md Phase-0 summary reworded
   so it no longer calls the spike "the first task" (F1); FR-053 sharpened to a
   non-redundant obligation vs FR-018 (A1); SC-012 unit test added to T057 (E2);
-  SC-016 link assertion added to T064 (E3). **No open `/speckit-analyze` findings
+  SC-016 link assertion added to T064 (E3). All cleared.
+- Revision 2026-09-14 (13) — third `/speckit-analyze` (0 CRITICAL/HIGH found)
+  surfaced 5 new items, now all cleared: ingredient-error recovery (FR-044,
+  SC-015 — US1 scenario 1c) given an explicit test case in T085, plus a note
+  that it isn't demonstrable until US3 ships (E1); a blanket Zod/
+  `withStructuredOutput` note added before the node tasks (constitution
+  Principle II) (D1); `usePauseBetweenStages.ts` added to plan.md's hooks list
+  (F1); T060's spec ref corrected from FR-051–FR-053 to FR-051–FR-052 now that
+  FR-053 is timeline-only, delivered by T072 (F2); T051 now asserts a
+  save-failure retry doesn't re-invoke the node or double-count usage
+  (FR-082/SC-026) (E2).
+- Revision 2026-09-14 (14) — fourth `/speckit-analyze` found one LOW
+  self-consistency slip from revision 13's F2 fix: plan.md's Project Structure
+  comment for `StageFailureBanner.tsx` still cited `FR-051–FR-053`; corrected to
+  `FR-051–FR-052` to match tasks.md T060. **No open `/speckit-analyze` findings
   remain.**
 - Revision 2026-09-02 (9) — second `/speckit-clarify` session: 5 questions asked.
   Added Clarifications bullets 9–13. Spec changes: cancel a running stage

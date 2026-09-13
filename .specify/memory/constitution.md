@@ -1,43 +1,60 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 2.0.0 → 2.0.1
-Rationale: PATCH — clarifies Principle VI to match the session model the spec
-settled on during clarification. v2.0.0 said "session identity is a `threadId` in
-the URL combined with `localStorage`"; the project chose a device-private model
-where an anonymous client identifier in `localStorage` is the sole credential and
-no session identifier ever appears in the URL. Same "no auth framework" intent,
-accurate mechanism — no change in obligations, so PATCH. Also drops "compare"
-from Principle VI's illustrative action list (the spec puts branch comparison out
-of scope for v1).
+Version change: 2.0.1 → 3.0.0
+Rationale: MAJOR — backward-incompatible correction of a factual claim in
+Principles I and IV. Both asserted that a single LangGraph `thread_id`'s own
+checkpoint history (`getStateHistory` / `parentConfig`) is THE branch tree, and
+that the Postgres checkpointer is the sole source of truth for it. Confirmed via
+the `/speckit-implement` T016 spike (research R3) against a real Postgres wire
+protocol, across `@langchain/langgraph-checkpoint-postgres` 1.0.0–1.0.5: creating
+a SECOND child of an already-branched-from checkpoint within one thread silently
+drops the write (a channel-version collision in that package's blob storage —
+confirmed absent from `MemorySaver`, so it is specific to that checkpointer
+package, not LangGraph core). A time-travel product forks from
+already-branched-from checkpoints constantly, so this is load-bearing, not an
+edge case. Fix: **each branch is its own LangGraph thread**, seeded by replaying
+the parent branch's recorded outputs (safe — a freshly-seeded thread never
+collides) up to the fork point. The app's own `branches` table now tracks
+cross-thread relationships; the checkpointer remains authoritative only for a
+single branch's own linear history. This changes what "the branch tree" IS, so
+it is a redefinition, not a clarification — MAJOR.
 
 Modified principles:
-  - VI. Session & UI Boundaries — first bullet rewritten (threadId-in-URL →
-    anonymous client identifier in `localStorage`, no session id in the URL,
-    sessions private to the creating browser); right-panel example list no longer
-    names "compare".
+  - I. Fixed Technology Stack — "Persistence / checkpointing" bullet narrowed:
+    the checkpointer is the source of truth for one branch's history, not the
+    whole tree; added a pointer to Principle IV for the branching rule.
+  - IV. Time-Travel State Integrity — replaced the "branch tree MUST be
+    reconstructed from checkpoint `parentConfig`" bullet with the confirmed
+    one-thread-per-branch rule, the fork-must-seed-a-new-thread rule (with the
+    reason — the confirmed bug), the retry-may-reuse-the-thread rule, and the
+    cross-thread tree-reconstruction rule (per-thread `parentConfig` chains +
+    the app's own `branches` table).
 
-Modified sections: none
+Modified sections:
+  - Technology & Configuration Constraints — "Checkpointer" bullet gains the
+    one-thread-per-branch rule and a pointer to Principle IV.
+  - Development Workflow & Quality Gates — review gate gains: "creates a second
+    child of an already-branched checkpoint within one thread via `updateState`
+    instead of seeding a new thread."
 
 Added sections: none
 Removed sections: none
 
 Templates requiring updates:
-  - .specify/templates/plan-template.md          ✅ present (created during /speckit-plan)
-  - .specify/templates/spec-template.md          ✅ present (created during /speckit-specify)
-  - .specify/templates/tasks-template.md         ✅ present (created during /speckit-tasks)
-  - .specify/templates/commands/*.md             n/a (not used in this project)
-  - RECOMMENDATION.md                            ✅ consistent
-  - specs/001-recipe-agent/{spec,plan,tasks,data-model}.md + contracts/api.md + CLAUDE.md  ✅ updated alongside this amendment
-  - README.md                                    ⚠ pending (not present — create with a Constitution reference when scaffolding)
+  - specs/001-recipe-agent/{spec,plan,tasks,data-model,research}.md +
+    contracts/api.md + CLAUDE.md                  ⚠ pending — update alongside
+    this amendment as part of the same `/speckit-implement` pass
+  - RECOMMENDATION.md                             ⚠ pending — same pass
+  - .specify/templates/*.md                       ✅ unaffected (structural, not
+    content-specific)
+  - README.md                                     ⚠ pending (not present)
 
-Prior amendment (2.0.0): MAJOR — Principle I LLM-integration clause moved from
-`@langchain/anthropic` + fixed model IDs to OpenRouter as the sole integration
-point via `@langchain/openai`; `ANTHROPIC_API_KEY` → `OPENROUTER_API_KEY`; model
-routing via a shared model-config module.
+Prior amendments: 2.0.1 PATCH (Principle VI → device-private session model);
+2.0.0 MAJOR (Principle I LLM integration → OpenRouter).
 
 Follow-up TODOs: none. Ratification date preserved (2026-09-01); Last Amended
-2026-09-06.
+2026-09-14.
 -->
 
 # Recipe Agent Constitution
@@ -71,8 +88,9 @@ dependency in this list requires a constitution amendment (see Governance).
   MUST NOT be hard-coded at call sites, and each node MUST declare which model key
   it uses and why.
 - **Persistence / checkpointing**: `@langchain/langgraph-checkpoint-postgres`
-  paired with Neon Postgres. The LangGraph checkpointer is the single source of
-  truth for graph state and its history.
+  paired with Neon Postgres. The LangGraph checkpointer is the source of truth
+  for a single branch's own state history. Cross-branch structure (the full
+  tree) is governed by Principle IV.
 - **Schema validation**: Zod.
 
 Rationale: One deploy target, one language, one persistence layer. The time-travel
@@ -122,13 +140,29 @@ neutralize all of them.
   time-travel editing.
 - If append-style history is genuinely needed, it MUST live in a separate,
   clearly non-editable channel that is documented as such.
-- The client-side branch tree MUST be reconstructed from checkpoint
-  `parentConfig` pointers. The app MUST NOT assume `getStateHistory` returns a
-  linear history.
+- **Each branch MUST be its own LangGraph `thread_id`.** A branch that carries
+  edited values MUST be created by seeding a brand-new thread (replaying the
+  parent branch's recorded stage outputs up to the fork point, then diverging
+  with the edit) — MUST NOT be created by asking the checkpointer to write a
+  second child of an already-branched-from checkpoint within one thread. That
+  path is PROHIBITED: it triggers a confirmed data-loss bug in
+  `@langchain/langgraph-checkpoint-postgres` (verified 1.0.0–1.0.5, research
+  R3) where the edit is silently dropped in favor of an existing sibling's
+  content.
+- Retry (re-running a stage with the SAME input, no edits) MAY resume a
+  historical checkpoint within the same thread via plain execution — this is
+  safe and creates a proper sibling; it MUST NOT go through `updateState`.
+- The full cross-branch tree MUST be reconstructed by combining each thread's
+  own `parentConfig` chain (`getStateHistory`) with the app's `branches` table
+  (session id, thread id, parent thread id, forked-from checkpoint id). The app
+  MUST NOT assume one thread's history spans more than one branch.
 
 Rationale: "Edit a state and replay from there" only works if editing a field
 replaces its value. An append reducer turns an edit into an append, silently
-corrupting the branch.
+corrupting the branch. The one-thread-per-branch rule exists because the
+alternative (branching within a thread) is empirically unsafe with the
+project's chosen checkpointer package — the constitution follows the confirmed
+behavior of the actual dependency, not the library's intended-but-buggy design.
 
 ### V. Client-Driven Step Execution
 
@@ -178,7 +212,8 @@ lets the visual design be applied without re-architecting the layout.
   handler; never Edge for DB/LangGraph routes.
 - **Checkpointer**: `PostgresSaver` is the only checkpointer in deployed
   environments. `MemorySaver` is permitted only in local development and tests,
-  never in code paths that run on Vercel.
+  never in code paths that run on Vercel. One LangGraph thread per branch
+  (Principle IV); the app's `branches` table links threads into the full tree.
 - **Graph compilation**: the graph is defined once and compiled once per module
   load; the compiled instance is exported and reused.
 
@@ -193,7 +228,9 @@ lets the visual design be applied without re-architecting the layout.
   - introduces an append reducer on an editable state channel,
   - adds graph state without a Zod schema,
   - hard-codes a model ID or a design token value outside its shared config,
-  - creates a DB pool or compiles the graph inside a request handler.
+  - creates a DB pool or compiles the graph inside a request handler,
+  - creates a second child of an already-branched-from checkpoint within one
+    LangGraph thread via `updateState` instead of seeding a new thread.
 - **Migrations**: checkpointer and application schema changes ship as explicit
   migration scripts, run outside the request path, and are noted in the PR.
 - **Local vs. deployed parity**: any `MemorySaver` or Edge usage MUST be guarded
@@ -222,4 +259,4 @@ lets the visual design be applied without re-architecting the layout.
   repo, the first command that needs one MUST create it in a constitution-aligned
   form.
 
-**Version**: 2.0.1 | **Ratified**: 2026-09-01 | **Last Amended**: 2026-09-06
+**Version**: 3.0.0 | **Ratified**: 2026-09-01 | **Last Amended**: 2026-09-14

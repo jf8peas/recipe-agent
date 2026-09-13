@@ -59,7 +59,8 @@ npm run dev          # http://localhost:3000
    - `POST /api/recipe/start` → session created, `parseIngredients` runs, timeline
      shows one entry.
 3. **Step** through: `proposeDirections → draftRecipe → critique ⇄ refine →
-   finalize`. Each click = `POST /api/recipe/:tid/step`, one stage.
+   finalize`. Each click = `POST /api/recipe/:sid/step` (`:sid` = session id;
+   the request body names which branch), one stage.
    - Or toggle **pause between stages** off → the client auto-advances (still one
      request per stage).
 4. Click any timeline entry → its state loads in the centre panel.

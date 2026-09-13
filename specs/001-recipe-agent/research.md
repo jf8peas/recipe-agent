@@ -28,62 +28,114 @@ Platform server (separate deploy, rejected by Principle I).
 
 ---
 
-## R2 — Reading history and reconstructing the branch tree
+## R2 — Reading history and reconstructing the branch tree — **REVISED after the T016 spike**
 
-**Decision**: `/history` calls `graph.getStateHistory({ configurable: { thread_id } })`
-and returns, per snapshot: `checkpointId` (`snapshot.config.configurable.checkpoint_id`),
-`parentCheckpointId` (`snapshot.parentConfig?.configurable.checkpoint_id ?? null`),
-`stage` (`snapshot.metadata.writes` keys, or `snapshot.metadata.source`),
-`step` (`snapshot.metadata.step`), `createdAt`, `next` (`snapshot.next`), and a
-derived `kind` (see R4). The client builds the tree in `lib/tree.ts` from
+**Superseded**: the original decision below assumed one thread = the whole
+branch tree. The spike (R3) proved that's unsafe. Kept for context; see the
+"CONFIRMED via spike" decision that follows.
+
+~~**Decision**: `/history` calls `graph.getStateHistory({ configurable: { thread_id } })`
+and returns, per snapshot: ... The client builds the tree in `lib/tree.ts` from
 `parentCheckpointId` pointers — LangGraph returns a flat list, newest-first, and
-forks share a parent (constitution Principle IV, spec FR-019).
+forks share a parent.~~
 
-**Rationale**: `getStateHistory` is the supported time-travel primitive; every
-snapshot already carries `parentConfig`. Tree assembly is a pure function → unit
-testable.
+**Decision (confirmed)**: One LangGraph `thread_id` = one branch = a strictly
+linear checkpoint chain (no forking ever happens within a thread — see R3). Its
+own history is still `graph.getStateHistory({ configurable: { thread_id } })`,
+mapped the same way (`checkpointId`, `parentCheckpointId`, `stage`, `step`,
+`createdAt`, `next`, derived `kind` — R4). The **cross-branch tree** is built by:
+1. `lib/db/branches.ts` returns every branch row for the session:
+   `(thread_id, parent_thread_id, forked_from_checkpoint_id)`.
+2. For each branch, fetch its own linear history (step 1 above).
+3. `lib/tree.ts` stitches them: a branch's first checkpoint's parent pointer
+   *within the unified tree* is `forked_from_checkpoint_id` on its OWN
+   `parent_thread_id`'s chain, not a LangGraph `parentConfig` (that field is
+   `null` for a fresh thread's genesis checkpoint — it has no LangGraph-level
+   parent, only an app-level one).
 
-**Alternatives considered**: Maintaining our own edge table mirroring the
-checkpoints (redundant, drift risk); assuming linear history (wrong — forks
-break it).
+**Rationale**: `getStateHistory` remains the right primitive for a single
+branch's own history (LangGraph still owns that). The tree ACROSS branches is
+inherently app-level information now, since branches are physically separate
+LangGraph threads.
+
+**Alternatives considered**: Maintaining our own edge table mirroring every
+checkpoint (redundant, drift risk, and still doesn't fix R3's bug); assuming one
+thread's history spans the whole tree (proven wrong by the spike).
 
 ---
 
-## R3 — Fork + replay, and the "which stage re-runs" problem
+## R3 — Fork + replay, and the "which stage re-runs" problem — **REVISED after the T016 spike**
 
-**Decision**: `/fork` takes `{ checkpointId, patch }`. It:
-1. Validates `patch` against the affected field schemas (spec FR-024).
+**Spike finding (CONFIRMED, blocking)**: `scripts/spike-timetravel.ts` (task
+T016) ran the fork mechanism against a real Postgres wire protocol (PGlite) with
+`@langchain/langgraph@1.4.15` and every published
+`@langchain/langgraph-checkpoint-postgres` 1.0.x (1.0.0–1.0.5):
+
+- `updateState(config, values, asNode)` only applies `values` when `asNode` is
+  one of the names in that checkpoint's own `next` array; it never re-invokes a
+  node's real logic (no model call) — it always means "asNode just returned
+  `values`," advancing `next` along the graph's edges from `asNode`.
+- **Bug**: calling `updateState` on a checkpoint that ALREADY has a child in the
+  same thread (creating a second, edited child — i.e. an ordinary fork) silently
+  drops the edit; the resulting checkpoint reflects the *existing* sibling's
+  content instead. Root cause shape: a channel-version collision in that
+  package's blob storage. Confirmed **absent** from `MemorySaver` on the
+  identical scenario — the bug is specific to
+  `@langchain/langgraph-checkpoint-postgres`, not LangGraph core.
+- **Safe**: plain `invoke(null, { configurable: { thread_id, checkpoint_id } })`
+  (real execution, no `updateState`) targeting a historical checkpoint correctly
+  creates a proper sibling (`metadata.source === "fork"`) — no collision. Safe
+  for **retry** (same input, no edits).
+  **safe**: `updateState(freshThreadGenesisConfig, values, START)` on a
+  brand-new, never-invoked `thread_id` — always correct, since nothing has ever
+  branched from it.
+
+**Decision**: each branch is realized as its **own LangGraph `thread_id`**
+(constitution Principle IV). `/fork` (`{ branchId, checkpointId, patch }`):
+1. Validates `patch` against the affected field schemas (spec FR-024), rejecting
+   edits to non-editable channels (FR-025a).
 2. Computes **replay-from stage** = the earliest stage that consumes any changed
-   field, via a static `FIELD_CONSUMERS` map:
+   field, via the static `FIELD_CONSUMERS` map (unchanged):
    `ingredients → parseIngredients`, `constraints → proposeDirections`,
    `directions → draftRecipe`, `recipeDraft → critique`,
    `critiques → refine`, `finalRecipe → finalize`.
-3. Calls `graph.updateState(sourceConfig, patch, asNode)` where `sourceConfig`
-   targets the checkpoint whose next step is the replay-from stage, and `asNode`
-   is that stage's predecessor. Returns the new `checkpointId`.
-4. The subsequent **step** runs the replay-from stage fresh against the edited
-   state, so its output and its outgoing conditional edge both reflect the edit
-   (spec FR-028/FR-029, FR-044).
+3. Reads the parent branch's own linear history up to and including the
+   checkpoint that is replay-from-stage's immediate predecessor.
+4. Creates a new `thread_id`; **replays** that prefix onto it with a chain of
+   `updateState(currentTipOfNewThread, recordedValues, recordedStageName)`
+   calls — one per prior stage, each targeting the new thread's own (always
+   childless) tip, so every call is safe per the finding above. No model calls
+   happen during replay.
+5. Applies the user's `patch` as the LAST replay step, attributed to
+   replay-from-stage's predecessor, so the new thread's tip has `next =
+   [replayFromStage]`.
+6. Inserts a `branches` row: `(thread_id, session_id, parent_thread_id,
+   forked_from_checkpoint_id)`.
+7. The subsequent **step** call runs replay-from-stage for real (genuine model
+   call) against the edited state.
 
-For the **ingredient-error recovery** case (spec FR-044) the selected checkpoint
-is the `ingredientError` output; editing `ingredients` sets replay-from =
-`parseIngredients`, so validation re-runs from the top of the branch.
+For the **ingredient-error recovery** case (spec FR-044), replay-from-stage is
+always `parseIngredients` (the graph's first real node), so the replay chain in
+step 4 is empty — the fork just seeds a fresh thread directly with the corrected
+`ingredients`.
 
-**Rationale**: `updateState` with the right `asNode` is the only way to make
-LangGraph re-evaluate a node's edges on resume; attributing the write to the
-node itself would skip its execution (it would not re-classify). The
-`FIELD_CONSUMERS` map keeps the rule explicit and testable.
+**Retry** (spec FR-051/FR-052, no edits) does **not** create a new thread — it
+stays in the failed stage's thread and calls plain `invoke(null, { thread_id,
+checkpoint_id: parentOfFailure })`, which safely creates a sibling per the
+confirmed-safe path.
 
-**Risk / spike**: exact `updateState` + `asNode` + resume semantics vary
-slightly by LangGraph.js version. First implementation task is a throwaway spike
-(`scripts/spike-timetravel.ts`) that runs start → step → updateState → resume and
-asserts the forked branch re-runs the intended node. If `asNode` cannot target a
-predecessor cleanly, fall back to: fork from the *parent* checkpoint of the
-replay-from stage (branch visually starts one row higher — acceptable).
+**Rationale**: this is the only pattern proven safe against the actual, shipped
+checkpointer package. It keeps the constitution's intent (LangGraph checkpointer
+as source of truth) for each branch's own history, while sidestepping the
+version-collision bug entirely — a fresh thread can never collide with anything.
 
-**Alternatives considered**: Re-running the whole graph from START on every fork
-(wasteful, extra model spend); a custom "replay controller" outside LangGraph
-(reinvents the checkpointer).
+**Alternatives considered** (see the constitution v3.0.0 Sync Impact Report for
+the full discussion): re-running the whole graph from START on every fork
+(wasteful, extra model spend, and doesn't fix the bug — replaying via
+`updateState` on a single thread still hits it); abandoning the LangGraph
+checkpointer for the app's own hand-rolled state-tree table (bigger departure
+from "LangGraph is the persistence layer," rejected in favor of the smaller,
+targeted one-thread-per-branch fix).
 
 ---
 
