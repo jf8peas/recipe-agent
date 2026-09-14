@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { startTestDb, type TestDb } from "../helpers/test-db";
 import { getPool } from "../../lib/db/pool";
+import { getByOwner } from "../../lib/db/sessions";
 
 type Responder = () => unknown;
 const responders = new Map<string, Responder[]>();
@@ -114,5 +115,17 @@ describe("POST /api/recipe/start", () => {
     expect(third.status).toBe(429);
     const json = await third.json();
     expect(json.error).toBe("rate-limited");
+  });
+
+  it("cleans up the session row when the first stage throws (no scripted response queued)", async () => {
+    const clientId = "client-start-failure";
+    // Deliberately queue nothing for parseIngredients, so it throws.
+    const res = await POST(request({ ingredients: ["2 eggs"] }, clientId));
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toBe("start-failed");
+
+    const sessions = await getByOwner(clientId, getPool());
+    expect(sessions).toHaveLength(0);
   });
 });

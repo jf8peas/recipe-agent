@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getClientId, jsonError } from "../../../../lib/api-helpers";
 import { getPool } from "../../../../lib/db/pool";
-import { insertSession } from "../../../../lib/db/sessions";
+import { insertSession, deleteSession } from "../../../../lib/db/sessions";
 import { insertBranch } from "../../../../lib/db/branches";
 import { recordUsageEvent, countClientEvents, countGlobalStageEvents } from "../../../../lib/db/usage";
 import { checkRateLimit, checkDailyClientCap, checkGlobalCap } from "../../../../lib/limits";
@@ -10,6 +10,7 @@ import { ConstraintsSchema, INITIAL_STATE, toRawIngredient } from "../../../../l
 import { getGraph } from "../../../../lib/agent/runtime";
 import { mintSessionId, mintThreadId } from "../../../../lib/ids";
 import { buildTimeline } from "../../../../lib/history";
+import { isProviderCapError, providerCapEnvelope } from "../../../../lib/agent/provider-errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -73,7 +74,24 @@ export async function POST(request: Request): Promise<NextResponse> {
     ingredients: ingredients.map(toRawIngredient),
     constraints: { ...INITIAL_STATE.constraints, ...body.data.constraints },
   };
-  const state = await graph.invoke(seed, { ...config, signal: request.signal });
+
+  let state;
+  try {
+    state = await graph.invoke(seed, { ...config, signal: request.signal });
+  } catch (err) {
+    // Nothing usable was produced — undo the session/branch rows created
+    // just above rather than leaving an orphaned, checkpoint-less session.
+    await deleteSession(sessionId, pool);
+    if (isProviderCapError(err)) {
+      // Spec FR-064/FR-066: treated like the global cap.
+      return NextResponse.json(providerCapEnvelope(), { status: 429 });
+    }
+    return jsonError(
+      500,
+      "start-failed",
+      "Could not start a session right now. Please try again.",
+    );
+  }
 
   await recordUsageEvent({ clientId, threadId, kind: "start" }, pool);
 
