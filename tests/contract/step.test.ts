@@ -79,18 +79,6 @@ const badIngredient = {
   reason: "not-food",
 };
 const direction = { title: "Frittata", summary: "eggy bake", whyItFits: "uses the eggs" };
-const draft = {
-  title: "Spinach Frittata",
-  servings: 2,
-  steps: [{ order: 1, text: "Whisk eggs", minutes: 2, technique: null }],
-  toBuy: [],
-};
-const nonBlockingCritique = {
-  feasibility: "fine",
-  flavorBalance: "fine",
-  missingOrUnclear: [],
-  blocking: false,
-};
 
 async function createSession(clientId: string) {
   queueResponse("parseIngredients", () => ({ ingredients: [okIngredient] }));

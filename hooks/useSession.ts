@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useClientId } from "./useClientId";
 import type { State, Constraints } from "@/lib/agent/state";
 import type { TimelineEntry } from "@/lib/tree";
+import type { EditableField } from "@/lib/field-consumers";
 
 const SESSION_ID_KEY = "recipe-agent.currentSessionId";
 
@@ -23,10 +24,17 @@ export interface SessionSnapshot {
   timeline: TimelineEntry[];
 }
 
-interface HistoryResponse {
-  branches: { threadId: string; parentThreadId: string | null }[];
+export interface BranchInfo {
+  threadId: string;
+  parentThreadId: string | null;
+  forkedFromCheckpointId: string | null;
+}
+
+export interface HistoryResponse {
+  branches: BranchInfo[];
   timeline: TimelineEntry[];
 }
+
 interface StateResponse {
   checkpointId: string;
   state: State;
@@ -41,7 +49,7 @@ interface StartResponse {
   next: string[];
   timeline: TimelineEntry[];
 }
-interface StepResponse {
+export interface StepResponse {
   branchId: string;
   checkpointId: string;
   state: State;
@@ -49,18 +57,85 @@ interface StepResponse {
   kind: string;
   timeline: TimelineEntry[];
 }
+interface CommitResponse {
+  checkpointId: string;
+  timeline: TimelineEntry[];
+}
+interface ForkResponse {
+  branchId: string;
+  checkpointId: string;
+  state: State;
+  replayFromStage: string;
+  timeline: TimelineEntry[];
+}
+
+/** A checkpoint being browsed that isn't necessarily the live tip (spec FR-020/FR-021). */
+export interface ViewedCheckpoint {
+  branchId: string;
+  checkpointId: string;
+  state: State;
+  next: string[];
+  kind?: string;
+}
+
+/** A computed-but-unsaved stage result held after a `202` from `/step` or
+ * `/step/commit` (spec FR-080–FR-082) — `fromCheckpointId` is the checkpoint
+ * the failed attempt advanced from, needed to retry the save. */
+export interface PendingSave {
+  state: State;
+  fromCheckpointId: string;
+}
 
 /**
  * Drives one session: restores the active `sessionId` from `localStorage` on
- * mount (spec FR-003b — no per-session URL), and exposes `start`/`step`
- * against the API routes, all scoped by the device-private `clientId`.
+ * mount (spec FR-003b — no per-session URL), and exposes `start`/`step`/
+ * `step` `mode:"retry"`/`step/commit`/`fork` mutations plus `/history` and
+ * `/state` reads, all scoped by the device-private `clientId`.
  */
 export function useSession() {
   const clientId = useClientId();
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
+  const [history, setHistory] = useState<HistoryResponse | null>(null);
+  const [viewed, setViewed] = useState<ViewedCheckpoint | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<SessionApiError | null>(null);
   const [restoring, setRestoring] = useState(true);
+  const [runningStage, setRunningStage] = useState<string | null>(null);
+  const [pendingSave, setPendingSave] = useState<PendingSave | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  /** Raw fetch: returns the HTTP status alongside the parsed body, with none
+   * of `callApi`'s "treat non-2xx as `error`" behavior — callers that need to
+   * distinguish `200` from `202` (step/commit's save-failure hold) use this
+   * directly instead. */
+  const postJson = useCallback(
+    async <T,>(
+      url: string,
+      body: unknown,
+      signal?: AbortSignal,
+    ): Promise<{ status: number; json: T } | null> => {
+      if (!clientId) return null;
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          signal,
+          headers: { "X-Client-Id": clientId, "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const json = await res.json().catch(() => ({}));
+        return { status: res.status, json: json as T };
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return null;
+        setError({
+          status: 0,
+          error: "network-error",
+          message: err instanceof Error ? err.message : "Network error.",
+        });
+        return null;
+      }
+    },
+    [clientId],
+  );
 
   const callApi = useCallback(
     async <T,>(url: string, init?: RequestInit): Promise<T | null> => {
@@ -87,6 +162,11 @@ export function useSession() {
         }
         return json as T;
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          // Cancelled (spec FR-072–FR-074): not an error — the pre-stage
+          // snapshot is left exactly as it was, nothing to surface.
+          return null;
+        }
         setError({
           status: 0,
           error: "network-error",
@@ -100,13 +180,22 @@ export function useSession() {
     [clientId],
   );
 
+  const fetchHistory = useCallback(
+    async (sessionId: string): Promise<HistoryResponse | null> => {
+      const res = await callApi<HistoryResponse>(`/api/recipe/${sessionId}/history`);
+      if (res) setHistory(res);
+      return res;
+    },
+    [callApi],
+  );
+
   const resume = useCallback(
     async (sessionId: string) => {
-      const history = await callApi<HistoryResponse>(`/api/recipe/${sessionId}/history`);
-      if (!history) return false;
-      const rootBranch = history.branches[0];
+      const historyRes = await fetchHistory(sessionId);
+      if (!historyRes) return false;
+      const rootBranch = historyRes.branches[0];
       if (!rootBranch) return false;
-      const leaf = [...history.timeline]
+      const leaf = [...historyRes.timeline]
         .filter((e) => e.threadId === rootBranch.threadId)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .at(-1);
@@ -122,11 +211,11 @@ export function useSession() {
         state: stateRes.state,
         next: stateRes.next,
         kind: stateRes.kind,
-        timeline: history.timeline,
+        timeline: historyRes.timeline,
       });
       return true;
     },
-    [callApi],
+    [callApi, fetchHistory],
   );
 
   useEffect(() => {
@@ -153,23 +242,150 @@ export function useSession() {
       if (!res) return;
       window.localStorage.setItem(SESSION_ID_KEY, res.sessionId);
       setSnapshot({ ...res, kind: undefined });
+      setHistory({ branches: [{ threadId: res.branchId, parentThreadId: null, forkedFromCheckpointId: null }], timeline: res.timeline });
+      setViewed(null);
+      setPendingSave(null);
     },
     [callApi],
   );
 
   const step = useCallback(
-    async (mode: "step" | "retry" = "step") => {
+    async (mode: "step" | "retry" = "step"): Promise<StepResponse | null> => {
+      if (!snapshot) return null;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      setRunningStage(snapshot.next[0] ?? null);
+      setLoading(true);
+      setError(null);
+      const fromCheckpointId = snapshot.checkpointId;
+      try {
+        const result = await postJson<
+          StepResponse | { pendingSave: true; state: State; computedCheckpointHint?: string }
+        >(
+          `/api/recipe/${snapshot.sessionId}/step`,
+          { branchId: snapshot.branchId, fromCheckpointId, mode },
+          controller.signal,
+        );
+        if (!result) return null;
+
+        if (result.status === 202) {
+          const body = result.json as { state: State };
+          setPendingSave({ state: body.state, fromCheckpointId });
+          return null;
+        }
+        if (result.status < 200 || result.status >= 300) {
+          const body = result.json as { error?: string; message?: string };
+          setError({
+            status: result.status,
+            error: body.error ?? "unknown-error",
+            message: body.message ?? "Something went wrong.",
+          });
+          return null;
+        }
+
+        const res = result.json as StepResponse;
+        setSnapshot({ sessionId: snapshot.sessionId, ...res });
+        setViewed(null);
+        void fetchHistory(snapshot.sessionId);
+        return res;
+      } finally {
+        abortControllerRef.current = null;
+        setRunningStage(null);
+        setLoading(false);
+      }
+    },
+    [snapshot, postJson, fetchHistory],
+  );
+
+  /** Cancels the in-flight stage, if any (spec FR-072–FR-075) — writes nothing. */
+  const cancel = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
+
+  /** Persists a held state after a `202` from `/step` — retries only the
+   * checkpoint write, never re-invokes the node (spec FR-080–FR-082). */
+  const commitHeldState = useCallback(
+    async (heldState: State, fromCheckpointId: string) => {
+      if (!snapshot) return null;
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await postJson<CommitResponse | { pendingSave: true }>(
+          `/api/recipe/${snapshot.sessionId}/step/commit`,
+          { branchId: snapshot.branchId, heldState, fromCheckpointId },
+        );
+        if (!result) return null;
+
+        if (result.status === 202) {
+          setPendingSave({ state: heldState, fromCheckpointId });
+          return null;
+        }
+        if (result.status < 200 || result.status >= 300) {
+          const body = result.json as { error?: string; message?: string };
+          setError({
+            status: result.status,
+            error: body.error ?? "unknown-error",
+            message: body.message ?? "Something went wrong.",
+          });
+          return null;
+        }
+
+        const res = result.json as CommitResponse;
+        setSnapshot({ ...snapshot, checkpointId: res.checkpointId, state: heldState, timeline: res.timeline });
+        setViewed(null);
+        setPendingSave(null);
+        return res;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [snapshot, postJson],
+  );
+
+  /** Retries saving the currently-held unsaved result, if any. */
+  const retrySave = useCallback(async () => {
+    if (!pendingSave) return;
+    await commitHeldState(pendingSave.state, pendingSave.fromCheckpointId);
+  }, [pendingSave, commitHeldState]);
+
+  /** Views any saved checkpoint without advancing the agent (spec FR-020/FR-021). */
+  const viewCheckpoint = useCallback(
+    async (branchId: string, checkpointId: string) => {
       if (!snapshot) return;
-      const res = await callApi<StepResponse>(`/api/recipe/${snapshot.sessionId}/step`, {
-        method: "POST",
-        body: JSON.stringify({
-          branchId: snapshot.branchId,
-          fromCheckpointId: snapshot.checkpointId,
-          mode,
-        }),
-      });
+      if (branchId === snapshot.branchId && checkpointId === snapshot.checkpointId) {
+        setViewed(null);
+        return;
+      }
+      const res = await callApi<StateResponse>(
+        `/api/recipe/${snapshot.sessionId}/state?branchId=${branchId}&checkpointId=${checkpointId}`,
+      );
       if (!res) return;
-      setSnapshot({ sessionId: snapshot.sessionId, ...res });
+      setViewed({ branchId, checkpointId, state: res.state, next: res.next, kind: res.kind });
+    },
+    [snapshot, callApi],
+  );
+
+  const clearViewedCheckpoint = useCallback(() => setViewed(null), []);
+
+  /** Edit & Fork (spec FR-026–FR-029): seeds a new branch, replaying up to `checkpointId` with `patch` applied. */
+  const fork = useCallback(
+    async (branchId: string, checkpointId: string, patch: Partial<Record<EditableField, unknown>>) => {
+      if (!snapshot) return null;
+      const res = await callApi<ForkResponse>(`/api/recipe/${snapshot.sessionId}/fork`, {
+        method: "POST",
+        body: JSON.stringify({ branchId, checkpointId, patch }),
+      });
+      if (!res) return null;
+      setSnapshot({
+        sessionId: snapshot.sessionId,
+        branchId: res.branchId,
+        checkpointId: res.checkpointId,
+        state: res.state,
+        next: [res.replayFromStage],
+        timeline: res.timeline,
+      });
+      setViewed(null);
+      return res;
     },
     [snapshot, callApi],
   );
@@ -177,8 +393,31 @@ export function useSession() {
   const reset = useCallback(() => {
     window.localStorage.removeItem(SESSION_ID_KEY);
     setSnapshot(null);
+    setHistory(null);
+    setViewed(null);
+    setPendingSave(null);
     setError(null);
   }, []);
 
-  return { clientId, snapshot, loading, error, restoring, start, step, reset };
+  return {
+    clientId,
+    snapshot,
+    history,
+    viewed,
+    loading,
+    error,
+    restoring,
+    runningStage,
+    pendingSave,
+    start,
+    step,
+    cancel,
+    commitHeldState,
+    retrySave,
+    viewCheckpoint,
+    clearViewedCheckpoint,
+    fork,
+    fetchHistory,
+    reset,
+  };
 }

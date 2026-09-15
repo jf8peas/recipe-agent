@@ -22,7 +22,7 @@ cp .env.example .env.local
 DATABASE_URL=postgres://…-pooler.…neon.tech/neondb?sslmode=require
 OPENROUTER_API_KEY=sk-or-…
 MODEL_DEFAULT=openai/gpt-4.1-mini
-MODEL_CRITIQUE=anthropic/claude-3.7-sonnet     # a stronger model than default
+MODEL_CRITIQUE=anthropic/claude-sonnet-5       # a stronger model than default
 PUBLIC_URL=http://localhost:3000
 
 MAX_INGREDIENTS=50

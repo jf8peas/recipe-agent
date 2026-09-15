@@ -1,4 +1,3 @@
-import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 
 // --- Sub-schemas (data-model.md § 1) ---------------------------------------
@@ -76,26 +75,14 @@ export const OutcomeSchema = z.enum([
 ]);
 export type Outcome = z.infer<typeof OutcomeSchema>;
 
-// --- Graph state (Annotation.Root) ------------------------------------------
+// --- Graph state -------------------------------------------------------
 //
-// Every channel is a plain last-value-wins Annotation (no reducers) so
-// `updateState` can overwrite any field on edit (constitution Principle IV,
-// spec FR-025). `critiques` grows across refine cycles, but by the `critique`
-// node returning the full new array — not via an append reducer.
-
-export const GraphState = Annotation.Root({
-  ingredients: Annotation<Ingredient[]>(),
-  constraints: Annotation<Constraints>(),
-  directions: Annotation<DishDirection[]>(),
-  recipeDraft: Annotation<RecipeDraft | null>(),
-  critiques: Annotation<Critique[]>(),
-  finalRecipe: Annotation<FinalRecipe | null>(),
-  refineCount: Annotation<number>(),
-  outcome: Annotation<Outcome>(),
-  failureReason: Annotation<string | null>(),
-});
-
-export type State = typeof GraphState.State;
+// This is a plain data/schema module — no `@langchain/langgraph` import here,
+// so client components can import it without pulling LangGraph into the
+// browser bundle. The `Annotation.Root` definition (every channel a plain
+// last-value-wins Annotation, so `updateState` can overwrite any field on
+// edit — constitution Principle IV, spec FR-025) lives in `lib/agent/graph.ts`,
+// the only place it's needed, built from the `State` type defined here.
 
 export const StateSchema = z.object({
   ingredients: z.array(IngredientSchema),
@@ -108,6 +95,8 @@ export const StateSchema = z.object({
   outcome: OutcomeSchema,
   failureReason: z.string().nullable(),
 });
+
+export type State = z.infer<typeof StateSchema>;
 
 /** Seeds a Graph State ingredient from a raw user-typed line, pending `parseIngredients` classification. */
 export function toRawIngredient(raw: string): Ingredient {

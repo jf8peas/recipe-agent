@@ -7,7 +7,7 @@ import { ChatOpenAI } from "@langchain/openai";
  * keep the app runnable if an operator forgets to set the env var.
  */
 const DEFAULT_FALLBACK = "openai/gpt-4.1-mini";
-const CRITIQUE_FALLBACK = "anthropic/claude-3.7-sonnet";
+const CRITIQUE_FALLBACK = "anthropic/claude-sonnet-5";
 
 export const MODELS = {
   get default(): string {

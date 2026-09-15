@@ -1,5 +1,10 @@
 import type { BranchRow } from "./db/schema";
 
+/** The only two `BranchRow` fields `buildTree` actually needs — lets callers
+ * (e.g. the client, which only has the camelCase `/history` response shape)
+ * pass a lighter-weight object without constructing a full `BranchRow`. */
+export type BranchLookup = Pick<BranchRow, "thread_id" | "forked_from_checkpoint_id">;
+
 export type TimelineStage =
   | "parseIngredients"
   | "ingredientError"
@@ -43,7 +48,7 @@ export interface TreeNode {
  * naturally covers a session's true root branch (`forkedFromCheckpointId`
  * null) as well as any orphaned/partial data.
  */
-export function buildTree(entries: TimelineEntry[], branches: readonly BranchRow[]): TreeNode[] {
+export function buildTree(entries: TimelineEntry[], branches: readonly BranchLookup[]): TreeNode[] {
   const branchByThreadId = new Map(branches.map((b) => [b.thread_id, b]));
   const nodeByCheckpointId = new Map<string, TreeNode>();
   for (const entry of entries) {

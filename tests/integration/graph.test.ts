@@ -107,7 +107,7 @@ describe("recipe graph (integration, fake model)", () => {
     queueResponse("finalize", () => ({ finalRecipe }));
 
     const config = { configurable: { thread_id: "happy-path" } };
-    let state = { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] };
+    const state = { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] };
     let result = await app.invoke(state, config);
     while (result.outcome === "in-progress") {
       result = await app.invoke(null, config);
@@ -144,7 +144,7 @@ describe("recipe graph (integration, fake model)", () => {
     queueResponse("finalize", () => ({ finalRecipe }));
 
     const config = { configurable: { thread_id: "refine-cycle" } };
-    let state = { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] };
+    const state = { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] };
     let result = await app.invoke(state, config);
     while (result.outcome === "in-progress") {
       result = await app.invoke(null, config);

@@ -1,12 +1,28 @@
 import type { SessionApiError } from "@/hooks/useSession";
 
+interface AutoRunControls {
+  running: boolean;
+  play: () => void;
+  pause: () => void;
+}
+
+interface EditingControls {
+  active: boolean;
+  canSave: boolean;
+  onStart: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+}
+
 interface ActionToolbarProps {
   next: string[];
   outcome: string;
   loading: boolean;
   error: SessionApiError | null;
+  pauseBetweenStages: boolean;
+  autoRun: AutoRunControls;
+  editing: EditingControls;
   onStep: () => void;
-  onRetry: () => void;
   onNewSession: () => void;
 }
 
@@ -18,13 +34,45 @@ const LIMIT_MESSAGES: Record<string, string> = {
   "session-cap": "This session has reached its maximum number of steps. Start a new session to continue.",
 };
 
-/** Step/Retry controls plus limit and stage-failure messaging (spec FR-051,
- * FR-061–FR-066, FR-077–FR-078). Auto-run (T057/T058) is not wired up yet —
- * this is manual Step only. */
-export function ActionToolbar({ next, outcome, loading, error, onStep, onRetry, onNewSession }: ActionToolbarProps) {
+/** Step (manual) vs. Play/Pause (Auto-run) controls, Edit & Fork, plus limit
+ * messaging (spec FR-026–FR-029, FR-034–FR-038, FR-061–FR-066, FR-077–FR-078).
+ * Which advance mode is shown follows the pause-between-stages toggle in
+ * `AppHeader` (T032). Not shown at all for a `stage-failure` outcome —
+ * `StageFailureBanner` owns that. */
+export function ActionToolbar({
+  next,
+  outcome,
+  loading,
+  error,
+  pauseBetweenStages,
+  autoRun,
+  editing,
+  onStep,
+  onNewSession,
+}: ActionToolbarProps) {
   const done = outcome === "finalized" || outcome === "ingredient-error";
-  const isStageFailure = outcome === "stage-failure";
+  const sessionCapped = error?.error === "session-cap";
   const limitMessage = error ? LIMIT_MESSAGES[error.error] : null;
+
+  if (editing.active) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+        <div style={{ display: "flex", gap: "var(--space-3)" }}>
+          <button
+            type="button"
+            onClick={editing.onSave}
+            disabled={loading || !editing.canSave}
+            style={buttonStyle(loading || !editing.canSave)}
+          >
+            {loading ? "Forking…" : "Save & Fork"}
+          </button>
+          <button type="button" onClick={editing.onCancel} disabled={loading} style={secondaryButtonStyle(loading)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
@@ -33,14 +81,9 @@ export function ActionToolbar({ next, outcome, loading, error, onStep, onRetry, 
           {limitMessage}
         </p>
       )}
-      {error && !limitMessage && (
-        <p role="alert" style={{ margin: 0, color: "var(--color-danger)", fontSize: "var(--text-sm)" }}>
-          {error.message}
-        </p>
-      )}
 
       <div style={{ display: "flex", gap: "var(--space-3)" }}>
-        {!done && !isStageFailure && (
+        {!done && pauseBetweenStages && (
           <button
             type="button"
             onClick={onStep}
@@ -50,14 +93,32 @@ export function ActionToolbar({ next, outcome, loading, error, onStep, onRetry, 
             {loading ? "Working…" : `Step (${next[0] ?? "…"})`}
           </button>
         )}
-        {isStageFailure && (
-          <button type="button" onClick={onRetry} disabled={loading} style={buttonStyle(loading)}>
-            {loading ? "Retrying…" : "Retry"}
+
+        {!done && !pauseBetweenStages && !autoRun.running && (
+          <button
+            type="button"
+            onClick={autoRun.play}
+            disabled={loading || next.length === 0}
+            style={buttonStyle(loading || next.length === 0)}
+          >
+            Play
           </button>
         )}
+        {!done && !pauseBetweenStages && autoRun.running && (
+          <button type="button" onClick={autoRun.pause} style={buttonStyle(false)}>
+            Pause
+          </button>
+        )}
+
         {done && (
           <button type="button" onClick={onNewSession} style={buttonStyle(false)}>
             Start a new session
+          </button>
+        )}
+
+        {!sessionCapped && (
+          <button type="button" onClick={editing.onStart} disabled={loading} style={secondaryButtonStyle(loading)}>
+            Edit &amp; Fork
           </button>
         )}
       </div>
@@ -72,6 +133,19 @@ function buttonStyle(disabled: boolean) {
     border: "none",
     background: "var(--color-accent)",
     color: "var(--color-accent-contrast)",
+    font: "inherit",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.6 : 1,
+  } as const;
+}
+
+function secondaryButtonStyle(disabled: boolean) {
+  return {
+    padding: "var(--space-2) var(--space-4)",
+    borderRadius: "var(--radius-md)",
+    border: "1px solid var(--color-border)",
+    background: "transparent",
+    color: "var(--color-text)",
     font: "inherit",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.6 : 1,

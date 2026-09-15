@@ -1,5 +1,12 @@
 import type { CSSProperties } from "react";
-import type { State } from "@/lib/agent/state";
+import type { Constraints, DishDirection, Ingredient, RecipeDraft, State } from "@/lib/agent/state";
+import { IngredientsEditor } from "@/components/fields/IngredientsEditor";
+import { ConstraintsEditor } from "@/components/fields/ConstraintsEditor";
+import { DirectionsEditor } from "@/components/fields/DirectionsEditor";
+import { RecipeDraftEditor } from "@/components/fields/RecipeDraftEditor";
+import { CritiquesView } from "@/components/fields/CritiquesView";
+import { FinalRecipeView } from "@/components/fields/FinalRecipeView";
+import type { EditableField } from "@/lib/field-consumers";
 
 const sectionStyle: CSSProperties = {
   border: "1px solid var(--color-border)",
@@ -15,115 +22,105 @@ const headingStyle: CSSProperties = {
   letterSpacing: "0.04em",
 };
 
-/** Minimal read-only view of the current Graph State (spec FR-022). Per-field
- * editors (IngredientsEditor, ConstraintsEditor, ...) replace this over time. */
-export function StatePanel({ state }: { state: State }) {
+export interface StatePanelProps {
+  state: State;
+  /** Enables inline editing of ingredients/constraints/directions/recipeDraft
+   * (spec FR-023/FR-024) — the fields `/fork` accepts a patch for, per T079's
+   * scope (critiques/finalRecipe stay read-only in this UI). */
+  editable?: boolean;
+  onFieldChange?: (field: EditableField, value: unknown, error: string | null) => void;
+}
+
+/** Read-only (or, with `editable`, editable) view of the current Graph State
+ * (spec FR-022), dispatching to a per-field component for each channel. */
+export function StatePanel({ state, editable, onFieldChange }: StatePanelProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-      {state.outcome === "ingredient-error" && (
-        <div style={sectionStyle}>
-          <h3 style={{ ...headingStyle, color: "var(--color-kind-ingredient-error)" }}>
-            Ingredient problem
-          </h3>
-          <ul style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
-            {state.ingredients
-              .filter((i) => !i.usable)
-              .map((i, idx) => (
-                <li key={idx}>
-                  “{i.raw}” — {i.reason ?? "not usable"}
-                </li>
-              ))}
-          </ul>
-        </div>
-      )}
-
       {state.ingredients.length > 0 && (
         <div style={sectionStyle}>
-          <h3 style={headingStyle}>Ingredients</h3>
-          <ul style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
-            {state.ingredients.map((i, idx) => (
-              <li key={idx}>
-                {i.name ?? i.raw}
-                {i.quantity ? ` (${i.quantity})` : ""}
-                {!i.usable ? " — not usable" : ""}
-              </li>
-            ))}
-          </ul>
+          <h3
+            style={
+              state.outcome === "ingredient-error"
+                ? { ...headingStyle, color: "var(--color-kind-ingredient-error)" }
+                : headingStyle
+            }
+          >
+            Ingredients
+          </h3>
+          <IngredientsEditor
+            ingredients={state.ingredients}
+            editable={editable}
+            onChange={
+              editable && onFieldChange
+                ? (value: Ingredient[]) => onFieldChange("ingredients", value, null)
+                : undefined
+            }
+          />
         </div>
       )}
 
-      {state.directions.length > 0 && (
+      {(editable ||
+        state.constraints.cuisine ||
+        state.constraints.maxMinutes ||
+        state.constraints.servings ||
+        state.constraints.diets.length > 0) && (
+        <div style={sectionStyle}>
+          <h3 style={headingStyle}>Constraints</h3>
+          <ConstraintsEditor
+            constraints={state.constraints}
+            editable={editable}
+            onChange={
+              editable && onFieldChange
+                ? (value: Constraints) => onFieldChange("constraints", value, null)
+                : undefined
+            }
+          />
+        </div>
+      )}
+
+      {(state.directions.length > 0 || editable) && (
         <div style={sectionStyle}>
           <h3 style={headingStyle}>Dish directions</h3>
-          <ul style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
-            {state.directions.map((d, idx) => (
-              <li key={idx}>
-                <strong>{d.title}</strong> — {d.summary}
-              </li>
-            ))}
-          </ul>
+          <DirectionsEditor
+            directions={state.directions}
+            editable={editable}
+            onChange={
+              editable && onFieldChange
+                ? (value: DishDirection[] | null, error: string | null) =>
+                    onFieldChange("directions", value, error)
+                : undefined
+            }
+          />
         </div>
       )}
 
       {state.recipeDraft && !state.finalRecipe && (
         <div style={sectionStyle}>
           <h3 style={headingStyle}>Recipe draft</h3>
-          <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 600 }}>{state.recipeDraft.title}</p>
-          <p style={{ margin: "0 0 var(--space-2) 0", fontSize: "var(--text-sm)" }}>
-            Serves {state.recipeDraft.servings}
-          </p>
-          <ol style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
-            {state.recipeDraft.steps.map((s) => (
-              <li key={s.order}>
-                {s.text}
-                {s.minutes ? ` (${s.minutes} min)` : ""}
-              </li>
-            ))}
-          </ol>
+          <RecipeDraftEditor
+            recipeDraft={state.recipeDraft}
+            editable={editable}
+            onChange={
+              editable && onFieldChange
+                ? (value: RecipeDraft | null, error: string | null) =>
+                    onFieldChange("recipeDraft", value, error)
+                : undefined
+            }
+          />
         </div>
       )}
 
       {state.finalRecipe && (
         <div style={sectionStyle}>
           <h3 style={headingStyle}>Final recipe</h3>
-          <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 600 }}>{state.finalRecipe.title}</p>
-          <p style={{ margin: "0 0 var(--space-2) 0", fontSize: "var(--text-sm)" }}>
-            Serves {state.finalRecipe.scaledServings}
-          </p>
-          <ol style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
-            {state.finalRecipe.steps.map((s) => (
-              <li key={s.order}>
-                {s.text}
-                {s.minutes ? ` (${s.minutes} min)` : ""}
-              </li>
-            ))}
-          </ol>
-          <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
-            ~{state.finalRecipe.nutrition.calories} kcal, {state.finalRecipe.nutrition.protein}g protein,{" "}
-            {state.finalRecipe.nutrition.carbs}g carbs, {state.finalRecipe.nutrition.fat}g fat per serving
-            (approximate)
-          </p>
+          <FinalRecipeView finalRecipe={state.finalRecipe} />
         </div>
       )}
 
       {state.critiques.length > 0 && (
         <div style={sectionStyle}>
           <h3 style={headingStyle}>Critique</h3>
-          <ul style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
-            {state.critiques.map((c) => (
-              <li key={c.cycle}>
-                Cycle {c.cycle}: {c.feasibility} / {c.flavorBalance}
-                {c.missingOrUnclear.length > 0 ? ` — missing: ${c.missingOrUnclear.join(", ")}` : ""}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {state.outcome === "stage-failure" && (
-        <div style={sectionStyle}>
-          <h3 style={{ ...headingStyle, color: "var(--color-kind-stage-failure)" }}>Stage failed</h3>
-          <p style={{ margin: 0 }}>{state.failureReason}</p>
+          <CritiquesView critiques={state.critiques} />
         </div>
       )}
     </div>
