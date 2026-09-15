@@ -49,6 +49,7 @@ export function DirectionsEditor({ directions, editable, onChange }: DirectionsE
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
       <textarea
+        aria-label="Dish directions (JSON)"
         value={raw}
         onChange={(e) => handleChange(e.target.value)}
         rows={10}

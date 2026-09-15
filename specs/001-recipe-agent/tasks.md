@@ -127,10 +127,10 @@ Zod schema for that channel (data-model.md § 1); model calls use
 
 **End-to-end**
 
-- [ ] T064 [US1] Write `tests/e2e/us1-happy-path.spec.ts`: start → step through all stages → finalized recipe; also assert the header author/feedback links open in a new tab and the session is unaffected (spec FR-047/SC-016)
-- [ ] T065 [P] [US1] Write `tests/e2e/us1-ingredient-error.spec.ts`: invalid ingredient → error outcome, no recipe content
-- [ ] T066 [P] [US1] Write `tests/e2e/us1-cancel.spec.ts`: cancel a running stage writes no checkpoint
-- [ ] T067 [P] [US1] Write `tests/e2e/us1-stage-failure.spec.ts`: bogus `MODEL_DEFAULT` → the `StageFailureBanner` with its reason and a **Retry** button appears, and Retry issues a `step` `mode:"retry"` request (spec FR-050/FR-051)
+- [X] T064 [US1] Write `tests/e2e/us1-happy-path.spec.ts`: start → step through all stages → finalized recipe; also assert the header author/feedback links open in a new tab and the session is unaffected (spec FR-047/SC-016)
+- [X] T065 [P] [US1] Write `tests/e2e/us1-ingredient-error.spec.ts`: invalid ingredient → error outcome, no recipe content
+- [X] T066 [P] [US1] Write `tests/e2e/us1-cancel.spec.ts`: cancel a running stage writes no checkpoint
+- [X] T067 [P] [US1] Write `tests/e2e/us1-stage-failure.spec.ts`: bogus `MODEL_DEFAULT` → the `StageFailureBanner` with its reason and a **Retry** button appears, and Retry issues a `step` `mode:"retry"` request (spec FR-050/FR-051)
 
 **Checkpoint**: User Story 1 is independently complete and demoable — a user can go from ingredients to a finished recipe, including every failure, retry, and limit path.
 
@@ -149,7 +149,7 @@ Zod schema for that channel (data-model.md § 1); model calls use
 - [X] T073 [US2] Wire timeline selection to `StatePanel` via `/state` (depends on T072, T053; spec FR-020/FR-021)
 - [X] T074 [P] [US2] Implement read-only `components/fields/ConstraintsEditor.tsx`, `DirectionsEditor.tsx`, `RecipeDraftEditor.tsx`, `CritiquesView.tsx`, `FinalRecipeView.tsx` (spec FR-022)
 - [X] T075 [P] [US2] Handle the "saved state no longer exists" message in `useSession` fetch errors (spec FR-033)
-- [ ] T076 [P] [US2] Write `tests/e2e/us2-inspect-history.spec.ts`: browse timeline, open an earlier entry, assert exact match
+- [X] T076 [P] [US2] Write `tests/e2e/us2-inspect-history.spec.ts`: browse timeline, open an earlier entry, assert exact match
 
 **Checkpoint**: User Story 2 works standalone against sessions produced by User Story 1.
 
@@ -168,9 +168,9 @@ Zod schema for that channel (data-model.md § 1); model calls use
 - [X] T082 [P] [US3] Implement branch switching in `BranchTimeline.tsx`: selecting any leaf lets that branch step independently (spec FR-030)
 - [X] T083 [P] [US3] Implement `hooks/useAdvanceLock.ts`: `navigator.locks` exclusive lock keyed by the active `branchId` (LangGraph thread_id) + `BroadcastChannel` for cross-tab state sync (research R11; spec FR-059)
 - [X] T084 [US3] Wire `useAdvanceLock` around Step/Play, Play-from-here, and **Retry** (T060) in `ActionToolbar.tsx` / the session view (depends on T083, T058, T081)
-- [ ] T085 [P] [US3] Write `tests/e2e/us3-fork-replay.spec.ts`: edit a field, fork, replay, assert divergence and original branch unchanged; also cover the **ingredient-error recovery** path — fork from an ingredient-error state with a corrected `ingredients` value, replay, assert it proceeds past `parseIngredients` (spec FR-044, SC-015; this is US1 scenario 1c, not demonstrable until this task exists)
-- [ ] T086 [P] [US3] Write `tests/e2e/us3-invalid-edit.spec.ts`: invalid edit blocked with the offending field named
-- [ ] T087 [P] [US3] Write `tests/e2e/us3-two-tabs.spec.ts`: second tab's advance controls disabled while the first tab's stage runs
+- [X] T085 [P] [US3] Write `tests/e2e/us3-fork-replay.spec.ts`: edit a field, fork, replay, assert divergence and original branch unchanged; also cover the **ingredient-error recovery** path — fork from an ingredient-error state with a corrected `ingredients` value, replay, assert it proceeds past `parseIngredients` (spec FR-044, SC-015; this is US1 scenario 1c, not demonstrable until this task exists)
+- [X] T086 [P] [US3] Write `tests/e2e/us3-invalid-edit.spec.ts`: invalid edit blocked with the offending field named
+- [X] T087 [P] [US3] Write `tests/e2e/us3-two-tabs.spec.ts`: second tab's advance controls disabled while the first tab's stage runs
 
 **Checkpoint**: User Story 3 works standalone on top of User Stories 1–2.
 
@@ -189,8 +189,8 @@ Zod schema for that channel (data-model.md § 1); model calls use
 - [X] T093 [US4] Implement the session list UI (title, last activity, status) with a "Delete" action calling `/delete` (depends on T092, T090; spec SC-018)
 - [X] T094 [P] [US4] Broadcast a `session:deleted` message on the shared `BroadcastChannel` so open tabs show the FR-033 message (depends on T083)
 - [X] T095 [P] [US4] Implement `GET /api/cron/purge` in `app/api/cron/purge/route.ts`, guarded by `CRON_SECRET`: find stale `sessions`, delete each of their `branches`' checkpoints then the session rows (same cascade as T090) (spec FR-057)
-- [ ] T096 [P] [US4] Write `tests/e2e/us4-resume.spec.ts`: close/reopen the browser, confirm the session list and exact resume
-- [ ] T097 [P] [US4] Write `tests/e2e/us4-delete.spec.ts`: delete a session, confirm it is gone from the session list and the `/mine` result
+- [X] T096 [P] [US4] Write `tests/e2e/us4-resume.spec.ts`: close/reopen the browser, confirm the session list and exact resume
+- [X] T097 [P] [US4] Write `tests/e2e/us4-delete.spec.ts`: delete a session, confirm it is gone from the session list and the `/mine` result
 
 **Checkpoint**: User Story 4 works standalone on top of User Stories 1–3.
 
@@ -200,7 +200,7 @@ Zod schema for that channel (data-model.md § 1); model calls use
 
 - [X] T098 [P] Keyboard navigation + focus management for `BranchTimeline.tsx` (spec FR-085)
 - [X] T099 [P] ARIA live-region announcements for stage status, errors, limit messages, and unsaved/failed results across `RunningStage.tsx` / `ActionToolbar.tsx` / `StageFailureBanner.tsx` / `UnsavedResultBanner.tsx` (spec FR-084)
-- [ ] T100 [P] Add `@axe-core/playwright` assertions to every `tests/e2e/*.spec.ts` flow and fix violations (spec SC-027)
+- [X] T100 [P] Add `@axe-core/playwright` assertions to every `tests/e2e/*.spec.ts` flow and fix violations (spec SC-027)
 - [ ] T101 [P] Manual keyboard + screen-reader pass on all primary flows (start, step, inspect, edit & fork, retry, delete); log and fix findings
 - [ ] T102 Translate the Claude Design artboards into `app/tokens.css` and component styling, checked against screenshots of the working app (RECOMMENDATION.md §6–7)
 - [X] T103 [P] Write `README.md` linking to `quickstart.md` and covering local setup + deploy

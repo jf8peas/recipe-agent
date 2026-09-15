@@ -48,8 +48,11 @@ export function StageProgress({ next, outcome }: StageProgressProps) {
                 : done
                   ? "var(--color-surface)"
                   : "transparent",
-              color: active ? "var(--color-accent-contrast)" : "var(--color-text)",
-              opacity: done || active ? 1 : 0.5,
+              // Not-yet-reached stages use the (already-AA-contrast) muted
+              // text token, not a translucent --color-text — opacity-blended
+              // text against --color-bg failed WCAG AA contrast (axe-core,
+              // spec SC-027).
+              color: active ? "var(--color-accent-contrast)" : done ? "var(--color-text)" : "var(--color-text-muted)",
             }}
           >
             {done ? "✓ " : ""}

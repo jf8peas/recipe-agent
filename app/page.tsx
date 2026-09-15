@@ -57,8 +57,22 @@ export default function HomePage() {
   const sessionList = useSessionList(clientId);
   const [pauseBetweenStages] = usePauseBetweenStages();
   const advanceLock = useAdvanceLock(snapshot?.branchId ?? null);
-  const [forceNewSession, setForceNewSession] = useState(false);
+  // Explicit, sticky — NOT derived from `entries.length` on every render.
+  // Deleting the only session while viewing the list must still show "No
+  // sessions yet." from inside the list, not silently fall back to the
+  // entry form just because entries dropped to zero.
+  const [view, setView] = useState<"list" | "entry">(() =>
+    sessionList.entries.length > 0 ? "list" : "entry",
+  );
   const [deletedNotice, setDeletedNotice] = useState(false);
+
+  // The local list started empty but got rebuilt from the server (spec
+  // FR-032) — switch to the list view too. One-directional: this never
+  // downgrades list -> entry.
+  useEffect(() => {
+    if (view === "entry" && sessionList.entries.length > 0) setView("list");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionList.entries.length]);
 
   // Keep the on-device session list in sync with whichever session becomes active.
   useEffect(() => {
@@ -143,8 +157,20 @@ export default function HomePage() {
 
   async function saveEdit() {
     const forkBranchId = viewed?.branchId ?? snapshot?.branchId;
-    const forkCheckpointId = viewed?.checkpointId ?? snapshot?.checkpointId;
-    if (!forkBranchId || !forkCheckpointId) return;
+    if (!forkBranchId) return;
+
+    // Editing `ingredients` always forks from the branch's genesis checkpoint
+    // (research R3, spec FR-044 "ingredient-error recovery") — not wherever
+    // the user happens to be looking — so the next real step re-runs
+    // `parseIngredients` for real on the correction, rather than skipping
+    // straight to `proposeDirections` on an unvalidated edit.
+    const forkCheckpointId = patch.ingredients
+      ? (history?.timeline.find((e) => e.threadId === forkBranchId && e.isBranchRoot)?.checkpointId ??
+        viewed?.checkpointId ??
+        snapshot?.checkpointId)
+      : (viewed?.checkpointId ?? snapshot?.checkpointId);
+    if (!forkCheckpointId) return;
+
     const result = await fork(forkBranchId, forkCheckpointId, patch);
     if (result) {
       setPatch({});
@@ -163,16 +189,13 @@ export default function HomePage() {
 
   function handleOpenSession(sessionId: string) {
     setDeletedNotice(false);
-    setForceNewSession(false);
     void openSession(sessionId);
   }
 
   function handleStartNewSession() {
     setDeletedNotice(false);
-    setForceNewSession(true);
+    setView("entry");
   }
-
-  const showSessionList = !snapshot && !forceNewSession && sessionList.entries.length > 0;
 
   return (
     <main style={{ padding: "var(--space-6)", maxWidth: "720px", margin: "0 auto" }}>
@@ -183,7 +206,7 @@ export default function HomePage() {
               That session was deleted in another tab.
             </p>
           )}
-          {showSessionList ? (
+          {view === "list" ? (
             <>
               <h1 style={{ fontSize: "var(--text-xl)", marginTop: 0 }}>Your sessions</h1>
               <SessionList
@@ -200,7 +223,7 @@ export default function HomePage() {
               {sessionList.entries.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setForceNewSession(false)}
+                  onClick={() => setView("list")}
                   style={{
                     marginTop: "var(--space-3)",
                     font: "inherit",

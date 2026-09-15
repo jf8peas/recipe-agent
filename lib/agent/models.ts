@@ -1,4 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
+import { createFakeChatModel } from "./fake-model";
 
 /**
  * All model IDs resolve only here (constitution Principle I). Both are
@@ -22,8 +23,15 @@ export const MODELS = {
  * Every node's model call goes through this — the only place OpenRouter is
  * wired up (research R5). Cancellation goes through the `signal` in the
  * RunnableConfig passed to `.invoke()`, not a constructor option (research R6).
+ *
+ * `RECIPE_AGENT_FAKE_MODEL=1` swaps in a deterministic fixture model
+ * (`./fake-model.ts`) instead of a real OpenRouter call — set only by the
+ * e2e test server (`scripts/e2e-server.ts`), never in production.
  */
-export function createChatModel(modelId: string): ChatOpenAI {
+export function createChatModel(modelId: string): ChatOpenAI | ReturnType<typeof createFakeChatModel> {
+  if (process.env.RECIPE_AGENT_FAKE_MODEL === "1") {
+    return createFakeChatModel();
+  }
   return new ChatOpenAI({
     model: modelId,
     apiKey: process.env.OPENROUTER_API_KEY,

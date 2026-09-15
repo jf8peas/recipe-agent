@@ -102,6 +102,15 @@ export function useSession() {
   const [restoring, setRestoring] = useState(true);
   const [runningStage, setRunningStage] = useState<string | null>(null);
   const [pendingSave, setPendingSave] = useState<PendingSave | null>(null);
+  // The checkpoint a stage-failure was attempted FROM (its parent) — a
+  // retry must target this, never the stage-failure checkpoint itself.
+  // Attributing the failure checkpoint via `updateState(asNode=failedStage)`
+  // (research R4) gives it whatever `next` failedStage's OWN outgoing edge
+  // computes (e.g. an unconditional edge to the following stage) — nothing
+  // about that reflects the failure, so resuming a plain `invoke` FROM the
+  // failure checkpoint would silently skip the failed stage entirely rather
+  // than actually retrying it.
+  const [retryFromCheckpointId, setRetryFromCheckpointId] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   /** Raw fetch: returns the HTTP status alongside the parsed body, with none
@@ -213,6 +222,11 @@ export function useSession() {
         kind: stateRes.kind,
         timeline: historyRes.timeline,
       });
+      // Resuming directly into a stage-failure tip — a Retry needs its
+      // parent, looked up from the timeline (see the `step` comment above).
+      setRetryFromCheckpointId(
+        stateRes.kind === "stage-failure" ? (leaf.parentCheckpointId ?? null) : null,
+      );
       return true;
     },
     [callApi, fetchHistory],
@@ -245,6 +259,7 @@ export function useSession() {
       setHistory({ branches: [{ threadId: res.branchId, parentThreadId: null, forkedFromCheckpointId: null }], timeline: res.timeline });
       setViewed(null);
       setPendingSave(null);
+      setRetryFromCheckpointId(null);
     },
     [callApi],
   );
@@ -260,7 +275,10 @@ export function useSession() {
       if (!snapshot) return null;
       const sessionId = snapshot.sessionId;
       const branchId = viewed?.branchId ?? snapshot.branchId;
-      const fromCheckpointId = viewed?.checkpointId ?? snapshot.checkpointId;
+      const fromCheckpointId =
+        mode === "retry" && retryFromCheckpointId
+          ? retryFromCheckpointId
+          : (viewed?.checkpointId ?? snapshot.checkpointId);
       const sourceNext = viewed?.next ?? snapshot.next;
 
       const controller = new AbortController();
@@ -296,6 +314,9 @@ export function useSession() {
         const res = result.json as StepResponse;
         setSnapshot({ sessionId, ...res });
         setViewed(null);
+        // Remember this attempt's source so a Retry targets the same
+        // parent again; clear it once a stage actually succeeds.
+        setRetryFromCheckpointId(res.kind === "stage-failure" ? fromCheckpointId : null);
         void fetchHistory(sessionId);
         return res;
       } finally {
@@ -304,7 +325,7 @@ export function useSession() {
         setLoading(false);
       }
     },
-    [snapshot, viewed, postJson, fetchHistory],
+    [snapshot, viewed, retryFromCheckpointId, postJson, fetchHistory],
   );
 
   /** Cancels the in-flight stage, if any (spec FR-072–FR-075) — writes nothing. */
@@ -395,9 +416,14 @@ export function useSession() {
         timeline: res.timeline,
       });
       setViewed(null);
+      setRetryFromCheckpointId(null);
+      // The fork response's `timeline` doesn't carry the updated `branches`
+      // list (only `/history` does) — refetch so BranchTimeline picks up
+      // the new branch, not just its checkpoints.
+      void fetchHistory(snapshot.sessionId);
       return res;
     },
-    [snapshot, callApi],
+    [snapshot, callApi, fetchHistory],
   );
 
   const reset = useCallback(() => {
@@ -406,6 +432,7 @@ export function useSession() {
     setHistory(null);
     setViewed(null);
     setPendingSave(null);
+    setRetryFromCheckpointId(null);
     setError(null);
   }, []);
 

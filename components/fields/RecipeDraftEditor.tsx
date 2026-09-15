@@ -58,6 +58,7 @@ export function RecipeDraftEditor({ recipeDraft, editable, onChange }: RecipeDra
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
       <textarea
+        aria-label="Recipe draft (JSON)"
         value={raw}
         onChange={(e) => handleChange(e.target.value)}
         rows={14}

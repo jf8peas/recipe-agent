@@ -54,6 +54,7 @@ export function IngredientsEditor({ ingredients, editable, onChange }: Ingredien
 
   return (
     <textarea
+      aria-label="Ingredients (one per line)"
       value={raw}
       onChange={(e) => {
         setRaw(e.target.value);
