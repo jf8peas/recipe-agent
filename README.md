@@ -209,6 +209,31 @@ Other scripts: `npm test` (Vitest, most tests run against a real Postgres
 wire protocol via PGlite — no live database needed), `npm run test:e2e`
 (Playwright), `npm run lint`, `npm run build`.
 
+See [specs/001-recipe-agent/quickstart.md](specs/001-recipe-agent/quickstart.md)
+for the fuller walkthrough — every env var explained, and manual test
+scenarios for each limit/failure path.
+
+## Deploy
+
+This is built for Vercel + Neon:
+
+1. Create a Neon Postgres project; grab the **pooled** connection string
+   (hostname has `-pooler` in it — required for serverless).
+2. Import the repo into a new Vercel project (Next.js is auto-detected).
+3. Set every env var from [.env.example](.env.example) in the Vercel
+   project's settings — at minimum `DATABASE_URL`, `OPENROUTER_API_KEY`,
+   `MODEL_DEFAULT`, `MODEL_CRITIQUE`, `PUBLIC_URL` (your deployed URL),
+   `CRON_SECRET` (any random string — Vercel Cron sends it back as
+   `Authorization: Bearer $CRON_SECRET`, which `/api/cron/purge` checks).
+4. Deploy. The build runs `npm run vercel-build`
+   ([package.json](package.json)), which applies `scripts/migrate.ts`
+   (idempotent — creates LangGraph's checkpoint tables and the app's own
+   tables) before `next build`, so migrations never need a separate manual
+   step.
+5. `vercel.json` already wires up the daily purge cron
+   (`/api/cron/purge`, `SESSION_PURGE_DAYS`-based retention) — nothing else
+   to configure.
+
 ## Where to look next
 
 - [specs/001-recipe-agent/spec.md](specs/001-recipe-agent/spec.md) — full

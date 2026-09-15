@@ -46,7 +46,7 @@ export function StageFailureBanner({ failureReason, loading, sessionCapped, onRe
         <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
           {sessionCapped
             ? "This session has reached its step limit — start a new session to continue."
-            : "You can also edit the input and fork from here instead of retrying as-is."}
+            : "You can also edit the input and try a different version instead of retrying as-is."}
         </span>
       </div>
     </div>

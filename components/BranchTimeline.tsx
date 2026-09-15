@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import type { KeyboardEvent } from "react";
 import { buildTree, type TimelineEntry, type TreeNode, type TimelineEntryKind } from "@/lib/tree";
 import type { BranchInfo } from "@/hooks/useSession";
 
@@ -27,8 +28,12 @@ interface BranchTimelineProps {
 
 /** The unified cross-branch tree (spec FR-017–FR-019, FR-053): one row per
  * saved state, newest branches nested under their fork point. Kind is always
- * rendered as text (and via `aria-label`), never color alone (FR-085). */
+ * rendered as text (and via `aria-label`), never color alone. Keyboard
+ * navigable (spec FR-085): native Tab order through each entry's button,
+ * plus Up/Down/Home/End to move directly between entries without needing
+ * to tab past every one individually. */
 export function BranchTimeline({ branches, timeline, selectedCheckpointId, onSelect }: BranchTimelineProps) {
+  const navRef = useRef<HTMLElement>(null);
   const tree = useMemo(
     () =>
       buildTree(
@@ -42,8 +47,26 @@ export function BranchTimeline({ branches, timeline, selectedCheckpointId, onSel
     return <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>No history yet.</p>;
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const container = navRef.current;
+    if (!container) return;
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>("button"));
+    if (buttons.length === 0) return;
+    const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
+
+    let nextIndex: number;
+    if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = buttons.length - 1;
+    else if (event.key === "ArrowDown") nextIndex = currentIndex < 0 ? 0 : Math.min(currentIndex + 1, buttons.length - 1);
+    else nextIndex = currentIndex < 0 ? 0 : Math.max(currentIndex - 1, 0);
+
+    event.preventDefault();
+    buttons[nextIndex]?.focus();
+  }
+
   return (
-    <nav aria-label="Session history">
+    <nav aria-label="Session history" ref={navRef} onKeyDown={handleKeyDown}>
       <TreeList nodes={tree} selectedCheckpointId={selectedCheckpointId} onSelect={onSelect} />
     </nav>
   );

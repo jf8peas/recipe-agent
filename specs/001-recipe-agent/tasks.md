@@ -164,10 +164,10 @@ Zod schema for that channel (data-model.md § 1); model calls use
 - [X] T078 [P] [US3] Write `tests/contract/fork.test.ts` (valid edit creates a NEW `branchId` distinct from the source; forking the SAME source checkpoint twice with different patches produces two independent branches with the correct edited content in each — the regression test for the T016 spike's bug; invalid field shape; patch to a non-editable channel → rejected; editing an array field replaces, does not append — FR-025; over-max ingredients; session-capped)
 - [X] T079 [US3] Make `IngredientsEditor`, `ConstraintsEditor`, `DirectionsEditor`, `RecipeDraftEditor` editable with inline validation messages (depends on T062, T074; spec FR-023/FR-024)
 - [X] T080 [US3] Implement "Edit & Fork" in `ActionToolbar.tsx`: collect the patch, call `/fork`, select the new branch (depends on T077, T079; spec FR-026/FR-027)
-- [ ] T081 [US3] Implement "Play from here" honoring the current Step/Auto-run mode (depends on T058, T080; spec FR-028)
-- [ ] T082 [P] [US3] Implement branch switching in `BranchTimeline.tsx`: selecting any leaf lets that branch step independently (spec FR-030)
-- [ ] T083 [P] [US3] Implement `hooks/useAdvanceLock.ts`: `navigator.locks` exclusive lock keyed by the active `branchId` (LangGraph thread_id) + `BroadcastChannel` for cross-tab state sync (research R11; spec FR-059)
-- [ ] T084 [US3] Wire `useAdvanceLock` around Step/Play, Play-from-here, and **Retry** (T060) in `ActionToolbar.tsx` / the session view (depends on T083, T058, T081)
+- [X] T081 [US3] Implement "Play from here" honoring the current Step/Auto-run mode (depends on T058, T080; spec FR-028)
+- [X] T082 [P] [US3] Implement branch switching in `BranchTimeline.tsx`: selecting any leaf lets that branch step independently (spec FR-030)
+- [X] T083 [P] [US3] Implement `hooks/useAdvanceLock.ts`: `navigator.locks` exclusive lock keyed by the active `branchId` (LangGraph thread_id) + `BroadcastChannel` for cross-tab state sync (research R11; spec FR-059)
+- [X] T084 [US3] Wire `useAdvanceLock` around Step/Play, Play-from-here, and **Retry** (T060) in `ActionToolbar.tsx` / the session view (depends on T083, T058, T081)
 - [ ] T085 [P] [US3] Write `tests/e2e/us3-fork-replay.spec.ts`: edit a field, fork, replay, assert divergence and original branch unchanged; also cover the **ingredient-error recovery** path — fork from an ingredient-error state with a corrected `ingredients` value, replay, assert it proceeds past `parseIngredients` (spec FR-044, SC-015; this is US1 scenario 1c, not demonstrable until this task exists)
 - [ ] T086 [P] [US3] Write `tests/e2e/us3-invalid-edit.spec.ts`: invalid edit blocked with the offending field named
 - [ ] T087 [P] [US3] Write `tests/e2e/us3-two-tabs.spec.ts`: second tab's advance controls disabled while the first tab's stage runs
@@ -181,14 +181,14 @@ Zod schema for that channel (data-model.md § 1); model calls use
 **Goal**: Sessions started earlier are listed and reopen exactly as left, in the same browser; a user can delete a session.
 **Independent Test**: Start and step a session, fully close the browser, reopen in the same browser, confirm it is listed and reopens to its full timeline and last-selected state (spec User Story 4).
 
-- [ ] T088 [P] [US4] Implement `GET /api/recipe/mine` in `app/api/recipe/mine/route.ts` using `sessions.getByOwner` (owner-scoped list, spec FR-032/FR-060)
-- [ ] T089 [P] [US4] Write `tests/contract/mine.test.ts` (returns only the caller's sessions; never another owner's)
-- [ ] T090 [P] [US4] Implement `POST /api/recipe/:sid/delete` in `app/api/recipe/[sid]/delete/route.ts`: for every `branches` row of the session, delete that thread's checkpoints (`checkpointer.deleteThread`), then `sessions.deleteSession` (cascades the `branches` rows via FK), idempotent (spec FR-055/FR-056/FR-058)
-- [ ] T091 [P] [US4] Write `tests/contract/delete.test.ts`
-- [ ] T092 [US4] Implement the on-device session list (`localStorage["recipe-agent.sessions"]`) with rebuild-from-`/mine` fallback on `app/page.tsx`; selecting a session sets `localStorage["recipe-agent.currentSessionId"]` and switches to the session view (no navigation, no URL change) (spec FR-004/FR-003b/FR-032)
-- [ ] T093 [US4] Implement the session list UI (title, last activity, status) with a "Delete" action calling `/delete` (depends on T092, T090; spec SC-018)
-- [ ] T094 [P] [US4] Broadcast a `session:deleted` message on the shared `BroadcastChannel` so open tabs show the FR-033 message (depends on T083)
-- [ ] T095 [P] [US4] Implement `GET /api/cron/purge` in `app/api/cron/purge/route.ts`, guarded by `CRON_SECRET`: find stale `sessions`, delete each of their `branches`' checkpoints then the session rows (same cascade as T090) (spec FR-057)
+- [X] T088 [P] [US4] Implement `GET /api/recipe/mine` in `app/api/recipe/mine/route.ts` using `sessions.getByOwner` (owner-scoped list, spec FR-032/FR-060)
+- [X] T089 [P] [US4] Write `tests/contract/mine.test.ts` (returns only the caller's sessions; never another owner's)
+- [X] T090 [P] [US4] Implement `POST /api/recipe/:sid/delete` in `app/api/recipe/[sid]/delete/route.ts`: for every `branches` row of the session, delete that thread's checkpoints (`checkpointer.deleteThread`), then `sessions.deleteSession` (cascades the `branches` rows via FK), idempotent (spec FR-055/FR-056/FR-058)
+- [X] T091 [P] [US4] Write `tests/contract/delete.test.ts`
+- [X] T092 [US4] Implement the on-device session list (`localStorage["recipe-agent.sessions"]`) with rebuild-from-`/mine` fallback on `app/page.tsx`; selecting a session sets `localStorage["recipe-agent.currentSessionId"]` and switches to the session view (no navigation, no URL change) (spec FR-004/FR-003b/FR-032)
+- [X] T093 [US4] Implement the session list UI (title, last activity, status) with a "Delete" action calling `/delete` (depends on T092, T090; spec SC-018)
+- [X] T094 [P] [US4] Broadcast a `session:deleted` message on the shared `BroadcastChannel` so open tabs show the FR-033 message (depends on T083)
+- [X] T095 [P] [US4] Implement `GET /api/cron/purge` in `app/api/cron/purge/route.ts`, guarded by `CRON_SECRET`: find stale `sessions`, delete each of their `branches`' checkpoints then the session rows (same cascade as T090) (spec FR-057)
 - [ ] T096 [P] [US4] Write `tests/e2e/us4-resume.spec.ts`: close/reopen the browser, confirm the session list and exact resume
 - [ ] T097 [P] [US4] Write `tests/e2e/us4-delete.spec.ts`: delete a session, confirm it is gone from the session list and the `/mine` result
 
@@ -198,13 +198,13 @@ Zod schema for that channel (data-model.md § 1); model calls use
 
 ## Final Phase: Polish & Cross-Cutting Concerns
 
-- [ ] T098 [P] Keyboard navigation + focus management for `BranchTimeline.tsx` (spec FR-085)
-- [ ] T099 [P] ARIA live-region announcements for stage status, errors, limit messages, and unsaved/failed results across `RunningStage.tsx` / `ActionToolbar.tsx` / `StageFailureBanner.tsx` / `UnsavedResultBanner.tsx` (spec FR-084)
+- [X] T098 [P] Keyboard navigation + focus management for `BranchTimeline.tsx` (spec FR-085)
+- [X] T099 [P] ARIA live-region announcements for stage status, errors, limit messages, and unsaved/failed results across `RunningStage.tsx` / `ActionToolbar.tsx` / `StageFailureBanner.tsx` / `UnsavedResultBanner.tsx` (spec FR-084)
 - [ ] T100 [P] Add `@axe-core/playwright` assertions to every `tests/e2e/*.spec.ts` flow and fix violations (spec SC-027)
 - [ ] T101 [P] Manual keyboard + screen-reader pass on all primary flows (start, step, inspect, edit & fork, retry, delete); log and fix findings
 - [ ] T102 Translate the Claude Design artboards into `app/tokens.css` and component styling, checked against screenshots of the working app (RECOMMENDATION.md §6–7)
-- [ ] T103 [P] Write `README.md` linking to `quickstart.md` and covering local setup + deploy
-- [ ] T104 Create the Neon project + Vercel integration, set all env vars from `.env.example`, confirm `vercel.json` cron, run `scripts/migrate.ts` as a pre-deploy step
+- [X] T103 [P] Write `README.md` linking to `quickstart.md` and covering local setup + deploy
+- [X] T104 Create the Neon project + Vercel integration, set all env vars from `.env.example`, confirm `vercel.json` cron, run `scripts/migrate.ts` as a pre-deploy step
 - [ ] T105 Smoke-test the full primary flow (start → step → fork → resume → delete) on a Vercel preview deployment, and record the observed first-stage latency against SC-002 (≤ 30 s)
 
 ---

@@ -146,6 +146,46 @@ describe("POST /api/recipe/:sid/fork", () => {
     expect(jsonB.state.recipeDraft.title).toBe("Version B");
   });
 
+  it("branches can be stepped independently after switching between them (spec FR-030)", async () => {
+    const { sid, branchId, checkpointId } = await createSessionAtDraft("client-branch-switch");
+    const patchA = { recipeDraft: { ...draft, title: "Version A" } };
+    const patchB = { recipeDraft: { ...draft, title: "Version B" } };
+
+    const forkA = await forkReq(sid, { branchId, checkpointId, patch: patchA }, "client-branch-switch");
+    const forkAJson = await forkA.json();
+    const forkB = await forkReq(sid, { branchId, checkpointId, patch: patchB }, "client-branch-switch");
+    const forkBJson = await forkB.json();
+
+    queueResponse("critique", () => ({
+      critique: { feasibility: "fine", flavorBalance: "fine", missingOrUnclear: [], blocking: false },
+    }));
+    const stepA = await stepReq(
+      sid,
+      { branchId: forkAJson.branchId, fromCheckpointId: forkAJson.checkpointId },
+      "client-branch-switch",
+    );
+    expect(stepA.status).toBe(200);
+    const stepAJson = await stepA.json();
+    expect(stepAJson.state.recipeDraft.title).toBe("Version A");
+    expect(stepAJson.state.critiques).toHaveLength(1);
+
+    queueResponse("critique", () => ({
+      critique: { feasibility: "fine", flavorBalance: "fine", missingOrUnclear: [], blocking: false },
+    }));
+    const stepB = await stepReq(
+      sid,
+      { branchId: forkBJson.branchId, fromCheckpointId: forkBJson.checkpointId },
+      "client-branch-switch",
+    );
+    expect(stepB.status).toBe(200);
+    const stepBJson = await stepB.json();
+    expect(stepBJson.state.recipeDraft.title).toBe("Version B");
+    expect(stepBJson.state.critiques).toHaveLength(1);
+
+    // Independent: stepping B did not affect A's already-saved checkpoint.
+    expect(stepAJson.checkpointId).not.toBe(stepBJson.checkpointId);
+  });
+
   it("rejects a patch touching a non-editable channel", async () => {
     const { sid, branchId, checkpointId } = await createSessionAtDraft("client-fork-noneditable");
     const res = await forkReq(

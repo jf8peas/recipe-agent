@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { useSession } from "@/hooks/useSession";
+import { useCallback, useEffect, useState } from "react";
+import { useSession, type StepResponse } from "@/hooks/useSession";
+import { useSessionList } from "@/hooks/useSessionList";
 import { useAutoRun } from "@/hooks/useAutoRun";
+import { useAdvanceLock } from "@/hooks/useAdvanceLock";
 import { usePauseBetweenStages } from "@/hooks/usePauseBetweenStages";
 import { EntryForm } from "@/components/EntryForm";
+import { SessionList } from "@/components/SessionList";
 import { StageProgress } from "@/components/StageProgress";
 import { StatePanel } from "@/components/StatePanel";
 import { ActionToolbar } from "@/components/ActionToolbar";
@@ -47,10 +50,54 @@ export default function HomePage() {
     viewCheckpoint,
     clearViewedCheckpoint,
     fork,
+    openSession,
+    deleteSessionById,
     reset,
   } = useSession();
+  const sessionList = useSessionList(clientId);
   const [pauseBetweenStages] = usePauseBetweenStages();
-  const autoRun = useAutoRun({ step });
+  const advanceLock = useAdvanceLock(snapshot?.branchId ?? null);
+  const [forceNewSession, setForceNewSession] = useState(false);
+  const [deletedNotice, setDeletedNotice] = useState(false);
+
+  // Keep the on-device session list in sync with whichever session becomes active.
+  useEffect(() => {
+    if (snapshot?.sessionId) sessionList.touch(snapshot.sessionId, null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot?.sessionId]);
+
+  // Rebuild the list from /mine if localStorage came up empty (spec FR-032) —
+  // private browsing, cleared site data, or a first load on this device.
+  useEffect(() => {
+    if (!clientId || restoring || snapshot) return;
+    if (sessionList.entries.length === 0) void sessionList.refreshFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, restoring, snapshot]);
+
+  // Another tab deleted the session we're looking at (spec FR-033/T094).
+  useEffect(() => {
+    const deletedId = advanceLock.deletedSessionId;
+    if (!deletedId) return;
+    sessionList.remove(deletedId);
+    if (snapshot?.sessionId === deletedId) {
+      reset();
+      setDeletedNotice(true);
+    }
+    advanceLock.acknowledgeDeletedSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [advanceLock.deletedSessionId]);
+
+  /** Every advance (Step/Play, Play-from-here, Retry) goes through the
+   * cross-tab lock (research R11, spec FR-059) — a locked-out attempt
+   * resolves to `null`, same as any other "nothing happened" outcome. */
+  const guardedStep = useCallback(
+    async (mode?: "step" | "retry"): Promise<StepResponse | null> => {
+      const result = await advanceLock.runLocked(() => step(mode));
+      return result === "locked" ? null : result;
+    },
+    [advanceLock, step],
+  );
+  const autoRun = useAutoRun({ step: guardedStep });
 
   const [editMode, setEditMode] = useState(false);
   const [patch, setPatch] = useState<Partial<Record<EditableField, unknown>>>({});
@@ -106,12 +153,70 @@ export default function HomePage() {
     }
   }
 
+  async function handleDeleteSession(sessionId: string) {
+    const ok = await deleteSessionById(sessionId);
+    if (ok) {
+      sessionList.remove(sessionId);
+      advanceLock.broadcastSessionDeleted(sessionId);
+    }
+  }
+
+  function handleOpenSession(sessionId: string) {
+    setDeletedNotice(false);
+    setForceNewSession(false);
+    void openSession(sessionId);
+  }
+
+  function handleStartNewSession() {
+    setDeletedNotice(false);
+    setForceNewSession(true);
+  }
+
+  const showSessionList = !snapshot && !forceNewSession && sessionList.entries.length > 0;
+
   return (
     <main style={{ padding: "var(--space-6)", maxWidth: "720px", margin: "0 auto" }}>
       {!snapshot ? (
         <>
-          <h1 style={{ fontSize: "var(--text-xl)", marginTop: 0 }}>What&apos;s in your kitchen?</h1>
-          <EntryForm onSubmit={(ingredients) => start(ingredients)} disabled={loading} />
+          {deletedNotice && (
+            <p role="alert" style={{ marginBottom: "var(--space-3)", color: "var(--color-danger)" }}>
+              That session was deleted in another tab.
+            </p>
+          )}
+          {showSessionList ? (
+            <>
+              <h1 style={{ fontSize: "var(--text-xl)", marginTop: 0 }}>Your sessions</h1>
+              <SessionList
+                entries={sessionList.entries}
+                onOpen={handleOpenSession}
+                onDelete={handleDeleteSession}
+                onNewSession={handleStartNewSession}
+              />
+            </>
+          ) : (
+            <>
+              <h1 style={{ fontSize: "var(--text-xl)", marginTop: 0 }}>What&apos;s in your kitchen?</h1>
+              <EntryForm onSubmit={(ingredients) => start(ingredients)} disabled={loading} />
+              {sessionList.entries.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setForceNewSession(false)}
+                  style={{
+                    marginTop: "var(--space-3)",
+                    font: "inherit",
+                    color: "var(--color-accent)",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Back to your sessions
+                </button>
+              )}
+            </>
+          )}
           {error && (
             <p role="alert" style={{ marginTop: "var(--space-3)", color: "var(--color-danger)" }}>
               {error.message}
@@ -146,7 +251,7 @@ export default function HomePage() {
 
           {isViewingHistory && !editMode && (
             <p role="status" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
-              Viewing an earlier step ({viewed.state.outcome === "in-progress" ? viewed.next[0] ?? "…" : viewed.state.outcome}).{" "}
+              Viewing an earlier step ({viewed.state.outcome === "in-progress" ? viewed.next[0] ?? "…" : viewed.state.outcome}). Stepping or editing from here starts a new version.{" "}
               <button
                 type="button"
                 onClick={clearViewedCheckpoint}
@@ -165,11 +270,17 @@ export default function HomePage() {
             />
           )}
 
+          {advanceLock.lockedElsewhere && (
+            <p role="status" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
+              This session is running in another tab.
+            </p>
+          )}
+
           {editMode ? (
             <ActionToolbar
               next={displayedNext}
               outcome={displayedState?.outcome ?? "in-progress"}
-              loading={loading}
+              loading={loading || advanceLock.lockedElsewhere}
               error={error}
               pauseBetweenStages={pauseBetweenStages}
               autoRun={autoRun}
@@ -180,7 +291,7 @@ export default function HomePage() {
                 onSave: saveEdit,
                 onCancel: cancelEdit,
               }}
-              onStep={() => step("step")}
+              onStep={() => guardedStep("step")}
               onNewSession={reset}
             />
           ) : pendingSave ? (
@@ -194,15 +305,15 @@ export default function HomePage() {
           ) : isStageFailure ? (
             <StageFailureBanner
               failureReason={snapshot.state.failureReason}
-              loading={loading}
+              loading={loading || advanceLock.lockedElsewhere}
               sessionCapped={error?.error === "session-cap"}
-              onRetry={() => step("retry")}
+              onRetry={() => guardedStep("retry")}
             />
           ) : (
             <ActionToolbar
-              next={isViewingHistory ? [] : snapshot.next}
+              next={displayedNext}
               outcome={snapshot.state.outcome}
-              loading={loading}
+              loading={loading || advanceLock.lockedElsewhere}
               error={error}
               pauseBetweenStages={pauseBetweenStages}
               autoRun={autoRun}
@@ -213,7 +324,7 @@ export default function HomePage() {
                 onSave: saveEdit,
                 onCancel: cancelEdit,
               }}
-              onStep={() => step("step")}
+              onStep={() => guardedStep("step")}
               onNewSession={reset}
             />
           )}

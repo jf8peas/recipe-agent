@@ -64,7 +64,7 @@ export function ActionToolbar({
             disabled={loading || !editing.canSave}
             style={buttonStyle(loading || !editing.canSave)}
           >
-            {loading ? "Forking…" : "Save & Fork"}
+            {loading ? "Saving…" : "Try this version"}
           </button>
           <button type="button" onClick={editing.onCancel} disabled={loading} style={secondaryButtonStyle(loading)}>
             Cancel
@@ -118,7 +118,7 @@ export function ActionToolbar({
 
         {!sessionCapped && (
           <button type="button" onClick={editing.onStart} disabled={loading} style={secondaryButtonStyle(loading)}>
-            Edit &amp; Fork
+            Edit
           </button>
         )}
       </div>

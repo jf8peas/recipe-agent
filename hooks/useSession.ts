@@ -249,21 +249,31 @@ export function useSession() {
     [callApi],
   );
 
+  /** Advances one stage from whichever checkpoint is currently being viewed
+   * (spec FR-028 "Play from here") — the live tip when nothing else is being
+   * viewed. A plain `invoke` from a historical checkpoint safely creates a
+   * sibling (research R3), so this needs no special-casing beyond sourcing
+   * `branchId`/`fromCheckpointId` from `viewed` when set; the result becomes
+   * the new tip either way. */
   const step = useCallback(
     async (mode: "step" | "retry" = "step"): Promise<StepResponse | null> => {
       if (!snapshot) return null;
+      const sessionId = snapshot.sessionId;
+      const branchId = viewed?.branchId ?? snapshot.branchId;
+      const fromCheckpointId = viewed?.checkpointId ?? snapshot.checkpointId;
+      const sourceNext = viewed?.next ?? snapshot.next;
+
       const controller = new AbortController();
       abortControllerRef.current = controller;
-      setRunningStage(snapshot.next[0] ?? null);
+      setRunningStage(sourceNext[0] ?? null);
       setLoading(true);
       setError(null);
-      const fromCheckpointId = snapshot.checkpointId;
       try {
         const result = await postJson<
           StepResponse | { pendingSave: true; state: State; computedCheckpointHint?: string }
         >(
-          `/api/recipe/${snapshot.sessionId}/step`,
-          { branchId: snapshot.branchId, fromCheckpointId, mode },
+          `/api/recipe/${sessionId}/step`,
+          { branchId, fromCheckpointId, mode },
           controller.signal,
         );
         if (!result) return null;
@@ -284,9 +294,9 @@ export function useSession() {
         }
 
         const res = result.json as StepResponse;
-        setSnapshot({ sessionId: snapshot.sessionId, ...res });
+        setSnapshot({ sessionId, ...res });
         setViewed(null);
-        void fetchHistory(snapshot.sessionId);
+        void fetchHistory(sessionId);
         return res;
       } finally {
         abortControllerRef.current = null;
@@ -294,7 +304,7 @@ export function useSession() {
         setLoading(false);
       }
     },
-    [snapshot, postJson, fetchHistory],
+    [snapshot, viewed, postJson, fetchHistory],
   );
 
   /** Cancels the in-flight stage, if any (spec FR-072–FR-075) — writes nothing. */
@@ -399,6 +409,29 @@ export function useSession() {
     setError(null);
   }, []);
 
+  /** Opens an existing session from the session list (spec FR-004) — the
+   * same logic the initial-mount restore uses, exposed for the list UI. */
+  const openSession = useCallback(
+    async (sessionId: string) => {
+      const ok = await resume(sessionId);
+      if (ok) window.localStorage.setItem(SESSION_ID_KEY, sessionId);
+      return ok;
+    },
+    [resume],
+  );
+
+  /** Permanently deletes a session (spec FR-055/FR-056). If it's the active
+   * one, resets to the no-session state. */
+  const deleteSessionById = useCallback(
+    async (sessionId: string): Promise<boolean> => {
+      const res = await callApi<{ deleted: true }>(`/api/recipe/${sessionId}/delete`, { method: "POST" });
+      if (!res) return false;
+      if (snapshot?.sessionId === sessionId) reset();
+      return true;
+    },
+    [callApi, snapshot, reset],
+  );
+
   return {
     clientId,
     snapshot,
@@ -417,6 +450,8 @@ export function useSession() {
     viewCheckpoint,
     clearViewedCheckpoint,
     fork,
+    openSession,
+    deleteSessionById,
     fetchHistory,
     reset,
   };
