@@ -127,6 +127,55 @@ describe("forkReplay", () => {
     expect(stepped.critiques).toHaveLength(1);
   });
 
+  it("forking from a checkpoint 2+ real stages deep produces exactly one checkpoint per real stage — no spurious extra entry from the pre-\"__start__\" input checkpoint", async () => {
+    queueResponse("parseIngredients", () => ({ ingredients: [usableIngredient] }));
+    queueResponse("proposeDirections", () => ({
+      directions: [direction, { ...direction, title: "Omelet" }],
+    }));
+    queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
+
+    const sourceThreadId = "fork-source-deep";
+    const config = { configurable: { thread_id: sourceThreadId } };
+    let result = await app.invoke(
+      { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] },
+      config,
+    );
+    while (!result.recipeDraft) {
+      result = await app.invoke(null, config);
+    }
+    const draftCheckpoint = await app.getState(config);
+    const draftCheckpointId = draftCheckpoint.config.configurable!.checkpoint_id as string;
+
+    const newThreadId = "fork-target-deep";
+    await forkReplay(app, {
+      sourceThreadId,
+      checkpointId: draftCheckpointId,
+      newThreadId,
+      patch: { recipeDraft: { ...draft, title: "Deep Fork Draft" } },
+    });
+
+    const targetHistory: { next: string[]; source: string }[] = [];
+    for await (const snap of app.getStateHistory({ configurable: { thread_id: newThreadId } })) {
+      targetHistory.push({ next: snap.next, source: (snap.metadata?.source as string) ?? "loop" });
+    }
+    targetHistory.reverse(); // oldest-first
+    const realStages = targetHistory.filter((entry) => entry.source !== "input");
+
+    // Exactly one checkpoint per real stage replayed (seeded genesis,
+    // parseIngredients, proposeDirections, draftRecipe) — regression check
+    // for the off-by-one bug where forkReplay's unfiltered history shifted
+    // every index by one and replayed an extra, spurious step using the
+    // literal "__start__" as asNode, producing a duplicated parseIngredients
+    // entry in the branch's timeline (caught via a live production fork).
+    expect(realStages).toHaveLength(4);
+    expect(realStages.map((entry) => entry.next[0])).toEqual([
+      "parseIngredients",
+      "proposeDirections",
+      "draftRecipe",
+      "critique",
+    ]);
+  });
+
   it("forking at the genesis checkpoint (ingredient-error recovery) seeds directly with the patch, no replay chain", async () => {
     const badIngredient = { ...toRawIngredient("a rock"), usable: false, reason: "not-food" as const };
     queueResponse("parseIngredients", () => ({ ingredients: [badIngredient] }));
@@ -142,10 +191,13 @@ describe("forkReplay", () => {
     }
     expect(result.outcome).toBe("ingredient-error");
 
-    // Genesis checkpoint = the very first entry in history (oldest-first).
+    // Genesis checkpoint = the oldest entry with source !== "input" — the
+    // true empty pre-"__start__" checkpoint is filtered out by forkReplay
+    // (matching lib/history.ts's buildTimeline) and is never a valid fork
+    // target.
     const history = [];
     for await (const snap of app.getStateHistory(config)) history.push(snap);
-    const genesis = history[history.length - 1]!;
+    const genesis = history.filter((snap) => snap.metadata?.source !== "input").at(-1)!;
     const genesisCheckpointId = genesis.config.configurable!.checkpoint_id as string;
 
     invocationCounts.clear();

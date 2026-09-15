@@ -32,17 +32,26 @@ export async function forkReplay(
 ): Promise<ForkReplayResult> {
   const { sourceThreadId, checkpointId, newThreadId, patch } = params;
 
-  const history: { values: State; next: string[]; checkpointId: string }[] = [];
+  const rawHistory: { values: State; next: string[]; checkpointId: string; source: string }[] = [];
   for await (const snapshot of app.getStateHistory({
     configurable: { thread_id: sourceThreadId },
   })) {
-    history.push({
+    rawHistory.push({
       values: snapshot.values as State,
       next: snapshot.next,
       checkpointId: (snapshot.config.configurable as { checkpoint_id: string }).checkpoint_id,
+      source: snapshot.metadata?.source ?? "loop",
     });
   }
-  history.reverse(); // oldest-first
+  rawHistory.reverse(); // oldest-first
+
+  // Drop LangGraph's own pre-"__start__" scaffolding checkpoint (source
+  // "input") the same way lib/history.ts does — without this, it shifts
+  // every index by one, and its `next` ("__start__", a pseudo-node rather
+  // than a real stage) ends up misattributing the FIRST real replay step
+  // (matches lib/history.ts's own root-checkpoint handling — see
+  // tests/unit/history.test.ts).
+  const history = rawHistory.filter((entry) => entry.source !== "input");
 
   const cutoff = history.findIndex((entry) => entry.checkpointId === checkpointId);
   if (cutoff === -1) {
