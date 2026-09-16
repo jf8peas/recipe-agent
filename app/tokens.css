@@ -54,6 +54,9 @@
   --header-height: 56px;
   --panel-left-width: 280px;
   --panel-right-width: 260px;
+
+  /* Stacking */
+  --z-overlay: 100;
   color-scheme: light;
 }
 

@@ -5,15 +5,16 @@ recipe, with full time-travel (inspect / branch / edit / replay) over the graph'
 state history.
 
 <!-- SPECKIT START -->
-Active plan: [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md)
+Active plan: [specs/002-about-app-slideshow/plan.md](specs/002-about-app-slideshow/plan.md)
 
-- Spec: [specs/001-recipe-agent/spec.md](specs/001-recipe-agent/spec.md)
-- Research: [specs/001-recipe-agent/research.md](specs/001-recipe-agent/research.md)
-- Data model: [specs/001-recipe-agent/data-model.md](specs/001-recipe-agent/data-model.md)
-- API contracts: [specs/001-recipe-agent/contracts/api.md](specs/001-recipe-agent/contracts/api.md)
-- Quickstart: [specs/001-recipe-agent/quickstart.md](specs/001-recipe-agent/quickstart.md)
-- Tasks: [specs/001-recipe-agent/tasks.md](specs/001-recipe-agent/tasks.md)
+- Spec: [specs/002-about-app-slideshow/spec.md](specs/002-about-app-slideshow/spec.md)
+- Research: [specs/002-about-app-slideshow/research.md](specs/002-about-app-slideshow/research.md)
+- Data model: [specs/002-about-app-slideshow/data-model.md](specs/002-about-app-slideshow/data-model.md)
+- UI contract: [specs/002-about-app-slideshow/contracts/about-slideshow-ui.md](specs/002-about-app-slideshow/contracts/about-slideshow-ui.md)
+- Quickstart: [specs/002-about-app-slideshow/quickstart.md](specs/002-about-app-slideshow/quickstart.md)
 - Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v3.0.0)
+
+Prior feature (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md)
 <!-- SPECKIT END -->
 
 ## Non-negotiables (from the constitution)
@@ -56,7 +57,7 @@ IDs.
 
 ## Current status
 
-Spec, plan, tasks in progress (`/speckit-implement`); constitution at v3.0.0.
-T001–T016 done (setup, DB layer, app shell, time-travel spike). The spike
-surfaced the one-thread-per-branch requirement above — plan/tasks/data-model/
-contracts updated accordingly before continuing past Foundational.
+Feature 001 (Recipe Agent core) is implemented and deployed to Vercel;
+constitution at v3.0.0. Feature 002 ("About This App" slideshow) is planned
+(`/speckit-plan` complete) and awaiting `/speckit-tasks` +
+`/speckit-implement`.
