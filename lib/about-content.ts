@@ -9,12 +9,17 @@ import type { TimelineStage } from "./tree";
 export const AUTHOR_LINKEDIN_URL = "https://www.linkedin.com/in/john-fong-04b7a120/";
 
 export const AUTHOR_BIO =
-  "John Fong is a software engineer who builds full-stack products end to end. Recipe Agent is a personal project exploring agentic UX with full time-travel over an AI system's own history.";
+  "John Fong is an on-the-tools business analyst who builds full-stack data products end to end. Recipe Agent is a personal project exploring how to use LangGraph to orchestrate an agentic process with full time-travel over an AI system's state history.";
 
 export interface TechStackItem {
   name: string;
   blurb: string;
 }
+
+/** FR-007/FR-011 — how the pieces below fit together, read alongside the
+ * architecture diagram (`components/AboutSlideshow.tsx`'s `ArchitectureDiagram`). */
+export const TECH_STACK_OVERVIEW =
+  "These pieces sit in a straight line, request to response: your browser calls a Next.js API route running on Node.js; that route hands the work to the LangGraph.js agent graph; each step of the graph that needs a model calls out through OpenRouter, which sends it to a fast, general-purpose Claude model for routine steps, or a stronger Claude model reserved for the one step that critiques the draft. Zod checks the shape of the data at every one of those handoffs, so nothing malformed ever crosses from one piece to the next.";
 
 /** FR-007. */
 export const TECH_STACK_ITEMS: TechStackItem[] = [

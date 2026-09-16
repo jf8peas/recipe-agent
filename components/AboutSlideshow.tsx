@@ -16,6 +16,7 @@ import {
   EXECUTION_STAGES,
   PERSISTENCE_EXPLANATION,
   TECH_STACK_ITEMS,
+  TECH_STACK_OVERVIEW,
 } from "@/lib/about-content";
 
 export interface AboutSlideshowProps {
@@ -236,21 +237,156 @@ function AuthorSlide() {
 
 function TechStackSlide() {
   return (
-    <ul
-      style={{
-        paddingLeft: "var(--space-5)",
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--space-3)",
-        margin: 0,
-      }}
-    >
-      {TECH_STACK_ITEMS.map((item) => (
-        <li key={item.name}>
-          <strong>{item.name}</strong> — {item.blurb}
-        </li>
-      ))}
-    </ul>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+      <p style={{ marginTop: 0 }}>{TECH_STACK_OVERVIEW}</p>
+      <ArchitectureDiagram />
+      <ul
+        style={{
+          paddingLeft: "var(--space-5)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-3)",
+          margin: 0,
+        }}
+      >
+        {TECH_STACK_ITEMS.map((item) => (
+          <li key={item.name}>
+            <strong>{item.name}</strong> — {item.blurb}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+interface DiagramBoxProps {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  title: string;
+  subtitle?: string;
+}
+
+/** One box in `ArchitectureDiagram`, vertically centering its title (and,
+ * when present, a smaller muted subtitle line below it). */
+function DiagramBox({ x, y, width, height, title, subtitle }: DiagramBoxProps) {
+  const centerX = x + width / 2;
+  const titleY = subtitle ? y + height / 2 - 3 : y + height / 2 + 4;
+  return (
+    <g>
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        rx={8}
+        fill="var(--color-surface)"
+        stroke="var(--color-border)"
+        strokeWidth={1.5}
+      />
+      <text
+        x={centerX}
+        y={titleY}
+        textAnchor="middle"
+        fontSize="12"
+        fontWeight="600"
+        fill="var(--color-text)"
+      >
+        {title}
+      </text>
+      {subtitle && (
+        <text
+          x={centerX}
+          y={titleY + 14}
+          textAnchor="middle"
+          fontSize="10"
+          fill="var(--color-text-muted)"
+        >
+          {subtitle}
+        </text>
+      )}
+    </g>
+  );
+}
+
+/**
+ * How Slide 2's pieces connect, request to response — a browser call flows
+ * down through the Next.js/Node.js API layer into the LangGraph.js graph,
+ * which calls out through OpenRouter to one of two Claude models depending
+ * on the step. Kept as a small hand-rolled inline SVG (no charting
+ * dependency, consistent with the rest of the app — research.md R5) and
+ * vertical so it reflows down to phone width without its own horizontal
+ * scroll container (FR-017).
+ */
+function ArchitectureDiagram() {
+  const arrow = "url(#about-diagram-arrow)";
+  const lineStyle = { stroke: "var(--color-text-muted)", strokeWidth: 1.5 } as const;
+
+  return (
+    <div style={{ display: "flex", justifyContent: "center", margin: "var(--space-2) 0" }}>
+      <svg
+        viewBox="0 0 260 390"
+        style={{ width: "100%", maxWidth: "280px", height: "auto" }}
+        role="img"
+        aria-label="Diagram: your browser calls a Next.js API route running on Node.js, which invokes the LangGraph.js agent graph. Each graph step that needs a model calls OpenRouter, which routes to a fast Claude model for routine steps, or a stronger Claude model reserved for the critique step."
+      >
+        <defs>
+          <marker
+            id="about-diagram-arrow"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--color-text-muted)" />
+          </marker>
+        </defs>
+
+        <line x1="130" y1="44" x2="130" y2="74" {...lineStyle} markerEnd={arrow} />
+        <line x1="130" y1="130" x2="130" y2="164" {...lineStyle} markerEnd={arrow} />
+        <line x1="130" y1="220" x2="130" y2="254" {...lineStyle} markerEnd={arrow} />
+        <line x1="130" y1="296" x2="67" y2="328" {...lineStyle} markerEnd={arrow} />
+        <line x1="130" y1="296" x2="192" y2="328" {...lineStyle} markerEnd={arrow} />
+
+        <DiagramBox x={20} y={0} width={220} height={44} title="Your browser" />
+        <DiagramBox
+          x={20}
+          y={76}
+          width={220}
+          height={54}
+          title="Next.js API Route"
+          subtitle="Node.js runtime"
+        />
+        <DiagramBox
+          x={20}
+          y={166}
+          width={220}
+          height={54}
+          title="LangGraph.js Agent Graph"
+          subtitle="Zod-validated state"
+        />
+        <DiagramBox x={55} y={256} width={150} height={40} title="OpenRouter" />
+        <DiagramBox
+          x={10}
+          y={330}
+          width={115}
+          height={50}
+          title="Claude"
+          subtitle="fast model — routine steps"
+        />
+        <DiagramBox
+          x={135}
+          y={330}
+          width={115}
+          height={50}
+          title="Claude"
+          subtitle="stronger model — critique"
+        />
+      </svg>
+    </div>
   );
 }
 
