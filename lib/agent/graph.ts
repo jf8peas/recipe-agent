@@ -3,6 +3,7 @@ import type {
   Ingredient,
   Constraints,
   DishDirection,
+  DirectionSelection,
   RecipeDraft,
   Critique,
   FinalRecipe,
@@ -11,6 +12,7 @@ import type {
 import { parseIngredients } from "./nodes/parseIngredients";
 import { ingredientError } from "./nodes/ingredientError";
 import { proposeDirections } from "./nodes/proposeDirections";
+import { selectDirection } from "./nodes/selectDirection";
 import { draftRecipe } from "./nodes/draftRecipe";
 import { critique } from "./nodes/critique";
 import { refine } from "./nodes/refine";
@@ -26,6 +28,7 @@ const GraphState = Annotation.Root({
   ingredients: Annotation<Ingredient[]>(),
   constraints: Annotation<Constraints>(),
   directions: Annotation<DishDirection[]>(),
+  directionSelection: Annotation<DirectionSelection | null>(),
   recipeDraft: Annotation<RecipeDraft | null>(),
   critiques: Annotation<Critique[]>(),
   finalRecipe: Annotation<FinalRecipe | null>(),
@@ -38,6 +41,7 @@ const NODE_NAMES = [
   "parseIngredients",
   "ingredientError",
   "proposeDirections",
+  "selectDirection",
   "draftRecipe",
   "critique",
   "refine",
@@ -54,6 +58,7 @@ export function buildGraph() {
     .addNode("parseIngredients", parseIngredients)
     .addNode("ingredientError", ingredientError)
     .addNode("proposeDirections", proposeDirections)
+    .addNode("selectDirection", selectDirection)
     .addNode("draftRecipe", draftRecipe)
     .addNode("critique", critique)
     .addNode("refine", refine)
@@ -64,7 +69,8 @@ export function buildGraph() {
       "proposeDirections",
     ])
     .addEdge("ingredientError", END)
-    .addEdge("proposeDirections", "draftRecipe")
+    .addEdge("proposeDirections", "selectDirection")
+    .addEdge("selectDirection", "draftRecipe")
     .addEdge("draftRecipe", "critique")
     .addConditionalEdges("critique", routeAfterCritique, ["refine", "finalize"])
     .addEdge("refine", "critique")

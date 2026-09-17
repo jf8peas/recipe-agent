@@ -9,6 +9,7 @@ export type TimelineStage =
   | "parseIngredients"
   | "ingredientError"
   | "proposeDirections"
+  | "selectDirection"
   | "draftRecipe"
   | "critique"
   | "refine"
@@ -16,11 +17,7 @@ export type TimelineStage =
   | "user-edit";
 
 export type TimelineEntryKind =
-  | "normal"
-  | "in-progress"
-  | "finalized"
-  | "ingredient-error"
-  | "stage-failure";
+  "normal" | "in-progress" | "finalized" | "ingredient-error" | "stage-failure";
 
 export interface TimelineEntry {
   checkpointId: string;
@@ -73,7 +70,8 @@ export function buildTree(entries: TimelineEntry[], branches: readonly BranchLoo
     }
   }
 
-  const byCreatedAt = (a: TreeNode, b: TreeNode) => a.entry.createdAt.localeCompare(b.entry.createdAt);
+  const byCreatedAt = (a: TreeNode, b: TreeNode) =>
+    a.entry.createdAt.localeCompare(b.entry.createdAt);
   for (const node of nodeByCheckpointId.values()) node.children.sort(byCreatedAt);
   roots.sort(byCreatedAt);
 

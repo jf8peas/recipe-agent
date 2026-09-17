@@ -57,6 +57,11 @@ const nonBlockingCritique = {
   missingOrUnclear: [],
   blocking: false,
 };
+const directionSelection = {
+  selectedIndex: 0,
+  explanation: "Frittata makes the best use of the ingredients.",
+  clearFavorite: true,
+};
 
 describe("forkReplay", () => {
   let testDb: TestDb;
@@ -80,11 +85,12 @@ describe("forkReplay", () => {
     await testDb.stop();
   });
 
-  it("replaying a 3-stage prefix onto a fresh thread reproduces the exact recorded values, and makes NO model call", async () => {
+  it("replaying a 4-stage prefix onto a fresh thread reproduces the exact recorded values, and makes NO model call", async () => {
     queueResponse("parseIngredients", () => ({ ingredients: [usableIngredient] }));
     queueResponse("proposeDirections", () => ({
       directions: [direction, { ...direction, title: "Omelet" }],
     }));
+    queueResponse("selectDirection", () => ({ directionSelection }));
     queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
 
     const sourceThreadId = "fork-source-1";
@@ -95,7 +101,8 @@ describe("forkReplay", () => {
     );
     // Stop right after `draftRecipe` runs (before critique), so the tip's
     // predecessor chain is: [genesis, parseIngredients, proposeDirections,
-    // draftRecipe] — the predecessor of `critique`, which consumes `recipeDraft`.
+    // selectDirection, draftRecipe] — the predecessor of `critique`, which
+    // consumes `recipeDraft`.
     while (!result.recipeDraft) {
       result = await app.invoke(null, config);
     }
@@ -127,11 +134,12 @@ describe("forkReplay", () => {
     expect(stepped.critiques).toHaveLength(1);
   });
 
-  it("forking from a checkpoint 2+ real stages deep produces exactly one checkpoint per real stage — no spurious extra entry from the pre-\"__start__\" input checkpoint", async () => {
+  it('forking from a checkpoint 2+ real stages deep produces exactly one checkpoint per real stage — no spurious extra entry from the pre-"__start__" input checkpoint', async () => {
     queueResponse("parseIngredients", () => ({ ingredients: [usableIngredient] }));
     queueResponse("proposeDirections", () => ({
       directions: [direction, { ...direction, title: "Omelet" }],
     }));
+    queueResponse("selectDirection", () => ({ directionSelection }));
     queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
 
     const sourceThreadId = "fork-source-deep";
@@ -162,22 +170,28 @@ describe("forkReplay", () => {
     const realStages = targetHistory.filter((entry) => entry.source !== "input");
 
     // Exactly one checkpoint per real stage replayed (seeded genesis,
-    // parseIngredients, proposeDirections, draftRecipe) — regression check
-    // for the off-by-one bug where forkReplay's unfiltered history shifted
-    // every index by one and replayed an extra, spurious step using the
-    // literal "__start__" as asNode, producing a duplicated parseIngredients
-    // entry in the branch's timeline (caught via a live production fork).
-    expect(realStages).toHaveLength(4);
+    // parseIngredients, proposeDirections, selectDirection, draftRecipe) —
+    // regression check for the off-by-one bug where forkReplay's unfiltered
+    // history shifted every index by one and replayed an extra, spurious
+    // step using the literal "__start__" as asNode, producing a duplicated
+    // parseIngredients entry in the branch's timeline (caught via a live
+    // production fork).
+    expect(realStages).toHaveLength(5);
     expect(realStages.map((entry) => entry.next[0])).toEqual([
       "parseIngredients",
       "proposeDirections",
+      "selectDirection",
       "draftRecipe",
       "critique",
     ]);
   });
 
   it("forking at the genesis checkpoint (ingredient-error recovery) seeds directly with the patch, no replay chain", async () => {
-    const badIngredient = { ...toRawIngredient("a rock"), usable: false, reason: "not-food" as const };
+    const badIngredient = {
+      ...toRawIngredient("a rock"),
+      usable: false,
+      reason: "not-food" as const,
+    };
     queueResponse("parseIngredients", () => ({ ingredients: [badIngredient] }));
 
     const sourceThreadId = "fork-source-genesis";

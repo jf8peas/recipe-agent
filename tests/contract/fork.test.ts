@@ -68,7 +68,14 @@ function forkReq(sid: string, body: unknown, clientId = "client-a"): Promise<Res
   });
 }
 
-const okIngredient = { raw: "2 eggs", name: "egg", quantity: "2", pantryStaple: false, usable: true, reason: null };
+const okIngredient = {
+  raw: "2 eggs",
+  name: "egg",
+  quantity: "2",
+  pantryStaple: false,
+  usable: true,
+  reason: null,
+};
 const direction = { title: "Frittata", summary: "eggy bake", whyItFits: "uses the eggs" };
 const draft = {
   title: "Spinach Frittata",
@@ -77,24 +84,52 @@ const draft = {
   toBuy: [],
 };
 
-/** Creates a session and steps it to right after `draftRecipe`, returning the
- * checkpoint whose `recipeDraft` is forkable (consumer: `critique`). */
+const directionSelection = {
+  selectedIndex: 0,
+  explanation: "Frittata makes the best use of the ingredients.",
+  clearFavorite: true,
+};
+
+/** Creates a session and steps it to right after `draftRecipe` (3
+ * stage-advances: proposeDirections, selectDirection, draftRecipe),
+ * returning the checkpoint whose `recipeDraft` is forkable (consumer:
+ * `critique`). */
 async function createSessionAtDraft(clientId: string) {
   queueResponse("parseIngredients", () => ({ ingredients: [okIngredient] }));
-  const startRes = await startPOST(req("http://localhost/api/recipe/start", { ingredients: ["2 eggs"] }, clientId));
+  const startRes = await startPOST(
+    req("http://localhost/api/recipe/start", { ingredients: ["2 eggs"] }, clientId),
+  );
   const startJson = await startRes.json();
   const sid = startJson.sessionId as string;
   const branchId = startJson.branchId as string;
 
-  queueResponse("proposeDirections", () => ({ directions: [direction, { ...direction, title: "Omelet" }] }));
-  const step1 = await stepReq(sid, { branchId, fromCheckpointId: startJson.checkpointId }, clientId);
+  queueResponse("proposeDirections", () => ({
+    directions: [direction, { ...direction, title: "Omelet" }],
+  }));
+  const step1 = await stepReq(
+    sid,
+    { branchId, fromCheckpointId: startJson.checkpointId },
+    clientId,
+  );
   const step1Json = await step1.json();
 
-  queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
-  const step2 = await stepReq(sid, { branchId, fromCheckpointId: step1Json.checkpointId }, clientId);
+  queueResponse("selectDirection", () => ({ directionSelection }));
+  const step2 = await stepReq(
+    sid,
+    { branchId, fromCheckpointId: step1Json.checkpointId },
+    clientId,
+  );
   const step2Json = await step2.json();
 
-  return { sid, branchId, checkpointId: step2Json.checkpointId as string };
+  queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
+  const step3 = await stepReq(
+    sid,
+    { branchId, fromCheckpointId: step2Json.checkpointId },
+    clientId,
+  );
+  const step3Json = await step3.json();
+
+  return { sid, branchId, checkpointId: step3Json.checkpointId as string };
 }
 
 describe("POST /api/recipe/:sid/fork", () => {
@@ -151,13 +186,26 @@ describe("POST /api/recipe/:sid/fork", () => {
     const patchA = { recipeDraft: { ...draft, title: "Version A" } };
     const patchB = { recipeDraft: { ...draft, title: "Version B" } };
 
-    const forkA = await forkReq(sid, { branchId, checkpointId, patch: patchA }, "client-branch-switch");
+    const forkA = await forkReq(
+      sid,
+      { branchId, checkpointId, patch: patchA },
+      "client-branch-switch",
+    );
     const forkAJson = await forkA.json();
-    const forkB = await forkReq(sid, { branchId, checkpointId, patch: patchB }, "client-branch-switch");
+    const forkB = await forkReq(
+      sid,
+      { branchId, checkpointId, patch: patchB },
+      "client-branch-switch",
+    );
     const forkBJson = await forkB.json();
 
     queueResponse("critique", () => ({
-      critique: { feasibility: "fine", flavorBalance: "fine", missingOrUnclear: [], blocking: false },
+      critique: {
+        feasibility: "fine",
+        flavorBalance: "fine",
+        missingOrUnclear: [],
+        blocking: false,
+      },
     }));
     const stepA = await stepReq(
       sid,
@@ -170,7 +218,12 @@ describe("POST /api/recipe/:sid/fork", () => {
     expect(stepAJson.state.critiques).toHaveLength(1);
 
     queueResponse("critique", () => ({
-      critique: { feasibility: "fine", flavorBalance: "fine", missingOrUnclear: [], blocking: false },
+      critique: {
+        feasibility: "fine",
+        flavorBalance: "fine",
+        missingOrUnclear: [],
+        blocking: false,
+      },
     }));
     const stepB = await stepReq(
       sid,
@@ -244,11 +297,12 @@ describe("POST /api/recipe/:sid/fork", () => {
 
   it("409s when the session is capped", async () => {
     const originalMax = process.env.MAX_STAGES_PER_SESSION;
-    process.env.MAX_STAGES_PER_SESSION = "2";
+    process.env.MAX_STAGES_PER_SESSION = "3";
     try {
       const { sid, branchId, checkpointId } = await createSessionAtDraft("client-fork-capped");
-      // createSessionAtDraft already ran 2 stage-advances (proposeDirections, draftRecipe),
-      // hitting stage_count === 2 === MAX_STAGES_PER_SESSION -> capped.
+      // createSessionAtDraft already ran 3 stage-advances (proposeDirections,
+      // selectDirection, draftRecipe), hitting stage_count === 3 ===
+      // MAX_STAGES_PER_SESSION -> capped.
       const res = await forkReq(
         sid,
         { branchId, checkpointId, patch: { recipeDraft: draft } },

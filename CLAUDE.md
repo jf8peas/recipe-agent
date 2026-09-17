@@ -5,16 +5,16 @@ recipe, with full time-travel (inspect / branch / edit / replay) over the graph'
 state history.
 
 <!-- SPECKIT START -->
-Active plan: [specs/002-about-app-slideshow/plan.md](specs/002-about-app-slideshow/plan.md)
+Active plan: [specs/003-direction-selection/plan.md](specs/003-direction-selection/plan.md)
 
-- Spec: [specs/002-about-app-slideshow/spec.md](specs/002-about-app-slideshow/spec.md)
-- Research: [specs/002-about-app-slideshow/research.md](specs/002-about-app-slideshow/research.md)
-- Data model: [specs/002-about-app-slideshow/data-model.md](specs/002-about-app-slideshow/data-model.md)
-- UI contract: [specs/002-about-app-slideshow/contracts/about-slideshow-ui.md](specs/002-about-app-slideshow/contracts/about-slideshow-ui.md)
-- Quickstart: [specs/002-about-app-slideshow/quickstart.md](specs/002-about-app-slideshow/quickstart.md)
+- Spec: [specs/003-direction-selection/spec.md](specs/003-direction-selection/spec.md)
+- Research: [specs/003-direction-selection/research.md](specs/003-direction-selection/research.md)
+- Data model: [specs/003-direction-selection/data-model.md](specs/003-direction-selection/data-model.md)
+- Node contract: [specs/003-direction-selection/contracts/select-direction-node.md](specs/003-direction-selection/contracts/select-direction-node.md)
+- Quickstart: [specs/003-direction-selection/quickstart.md](specs/003-direction-selection/quickstart.md)
 - Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v3.0.0)
 
-Prior feature (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md)
+Prior features (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md), [specs/002-about-app-slideshow/plan.md](specs/002-about-app-slideshow/plan.md)
 <!-- SPECKIT END -->
 
 ## Non-negotiables (from the constitution)
@@ -57,7 +57,7 @@ IDs.
 
 ## Current status
 
-Feature 001 (Recipe Agent core) is implemented and deployed to Vercel;
-constitution at v3.0.0. Feature 002 ("About This App" slideshow) is planned
-(`/speckit-plan` complete) and awaiting `/speckit-tasks` +
-`/speckit-implement`.
+Features 001 (Recipe Agent core), 002 ("About This App" slideshow), and 003
+(direction selection stage) are all implemented; constitution at v3.0.0.
+Feature 003 is implemented locally, verified (`tsc`/`vitest`/`build`/
+`playwright` all green), and not yet deployed to Vercel.

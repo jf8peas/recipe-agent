@@ -1,4 +1,11 @@
-import type { Constraints, Critique, DishDirection, Ingredient, RecipeDraft } from "./state";
+import type {
+  Constraints,
+  Critique,
+  DirectionSelection,
+  DishDirection,
+  Ingredient,
+  RecipeDraft,
+} from "./state";
 
 function constraintsBlock(constraints: Constraints): string {
   const parts: string[] = [];
@@ -9,7 +16,10 @@ function constraintsBlock(constraints: Constraints): string {
   return parts.length > 0 ? parts.join("\n") : "No constraints specified.";
 }
 
-export function parseIngredientsPrompt(ingredients: Ingredient[], constraints: Constraints): string {
+export function parseIngredientsPrompt(
+  ingredients: Ingredient[],
+  constraints: Constraints,
+): string {
   return `You are a culinary assistant. Classify each raw ingredient line a home
 cook typed. For each, decide if it's usable to cook with, normalize its name
 and quantity if possible, and flag whether it's a common pantry staple
@@ -26,7 +36,10 @@ For each unusable item, set usable: false and reason to one of:
 "duplicate" (repeats an earlier line), or "other".`;
 }
 
-export function proposeDirectionsPrompt(ingredients: Ingredient[], constraints: Constraints): string {
+export function proposeDirectionsPrompt(
+  ingredients: Ingredient[],
+  constraints: Constraints,
+): string {
   const usable = ingredients.filter((i) => i.usable);
   return `Given these usable ingredients, propose 2-3 distinct dish directions
 (different styles/cuisines/techniques) that make good use of them.
@@ -41,13 +54,44 @@ For each direction give a short title, a 1-2 sentence summary, and a brief
 note on why it fits the ingredients and constraints.`;
 }
 
+export function selectDirectionPrompt(
+  ingredients: Ingredient[],
+  directions: DishDirection[],
+  constraints: Constraints,
+): string {
+  const usable = ingredients.filter((i) => i.usable);
+  return `Given these candidate dish directions, judge which one best fits the
+available ingredients and constraints, and is the strongest choice to cook.
+Report its index (0-based, in the order listed below), a brief explanation
+of why, and whether it was a clear favorite or a close call among equivalent
+options.
+
+Constraints:
+${constraintsBlock(constraints)}
+
+Usable ingredients:
+${usable.map((i) => `- ${i.name ?? i.raw}${i.quantity ? ` (${i.quantity})` : ""}`).join("\n")}
+
+Candidate directions:
+${directions.map((d, i) => `${i}. ${d.title} — ${d.summary} (${d.whyItFits})`).join("\n")}
+
+If no candidate is clearly better than the others, that's a valid outcome:
+report clearFavorite: false, pick the first-listed candidate (index 0), and
+say plainly in the explanation that it was a default pick among equivalent
+options — don't invent a confident-sounding reason for it.`;
+}
+
 export function draftRecipePrompt(
   ingredients: Ingredient[],
   constraints: Constraints,
   directions: DishDirection[],
+  directionSelection: DirectionSelection | null,
 ): string {
   const usable = ingredients.filter((i) => i.usable);
-  const chosen = directions[0];
+  // The `?? 0` fallback is solely for a checkpoint that predates this
+  // feature, where `directionSelection` is still null (spec FR-014) — a
+  // normal run always has a selection by the time drafting runs.
+  const chosen = directions[directionSelection?.selectedIndex ?? 0];
   return `Write a full recipe draft for this dish direction, using the
 available ingredients.
 
@@ -83,7 +127,10 @@ Recipe draft:
 ${JSON.stringify(recipeDraft, null, 2)}`;
 }
 
-export function refinePrompt(recipeDraft: RecipeDraft | null, latestCritique: Critique | undefined): string {
+export function refinePrompt(
+  recipeDraft: RecipeDraft | null,
+  latestCritique: Critique | undefined,
+): string {
   return `Revise this recipe draft to address the critique below. Keep what
 already works; only change what the critique calls out.
 

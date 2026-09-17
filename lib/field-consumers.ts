@@ -4,6 +4,7 @@ import {
   IngredientSchema,
   ConstraintsSchema,
   DishDirectionSchema,
+  DirectionSelectionSchema,
   RecipeDraftSchema,
   CritiqueSchema,
   FinalRecipeSchema,
@@ -18,7 +19,8 @@ import {
 export const FIELD_CONSUMERS = {
   ingredients: "parseIngredients",
   constraints: "proposeDirections",
-  directions: "draftRecipe",
+  directions: "selectDirection",
+  directionSelection: "draftRecipe",
   recipeDraft: "critique",
   critiques: "refine",
   finalRecipe: "finalize",
@@ -36,7 +38,8 @@ export const EDITABLE_FIELDS: ReadonlySet<EditableField> = new Set(
 export const FIELD_SCHEMAS = {
   ingredients: z.array(IngredientSchema),
   constraints: ConstraintsSchema,
-  directions: z.array(DishDirectionSchema),
+  directions: z.array(DishDirectionSchema).min(1),
+  directionSelection: DirectionSelectionSchema,
   recipeDraft: RecipeDraftSchema,
   critiques: z.array(CritiqueSchema),
   finalRecipe: FinalRecipeSchema,
@@ -47,6 +50,7 @@ export const FIELD_SCHEMAS = {
 const STAGE_ORDER = [
   "parseIngredients",
   "proposeDirections",
+  "selectDirection",
   "draftRecipe",
   "critique",
   "refine",
@@ -55,5 +59,7 @@ const STAGE_ORDER = [
 
 export function earliestReplayStage(fields: readonly EditableField[]): string {
   const stages = fields.map((field) => FIELD_CONSUMERS[field]);
-  return [...stages].sort((a, b) => STAGE_ORDER.indexOf(a as never) - STAGE_ORDER.indexOf(b as never))[0]!;
+  return [...stages].sort(
+    (a, b) => STAGE_ORDER.indexOf(a as never) - STAGE_ORDER.indexOf(b as never),
+  )[0]!;
 }

@@ -1,13 +1,15 @@
 import { test, expect } from "@playwright/test";
 import { startSession, clickStep, expectNoA11yViolations } from "./helpers";
 
-test("US4 resume: closing and reopening the browser resumes the exact same session", async ({ page }) => {
+test("US4 resume: closing and reopening the browser resumes the exact same session", async ({
+  page,
+}) => {
   await startSession(page, ["2 eggs", "spinach"]);
   await clickStep(page); // proposeDirections
 
   await expect(page.getByRole("heading", { name: "Dish directions" })).toBeVisible();
   await expect(page.getByText("Spinach Frittata")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Step (draftRecipe)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Step (selectDirection)" })).toBeVisible();
 
   // Simulates closing and reopening the browser: a fresh load of `/`, same
   // localStorage (page.reload() preserves it, same as relaunching against
@@ -16,7 +18,7 @@ test("US4 resume: closing and reopening the browser resumes the exact same sessi
 
   await expect(page.getByRole("heading", { name: "Dish directions" })).toBeVisible();
   await expect(page.getByText("Spinach Frittata")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Step (draftRecipe)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Step (selectDirection)" })).toBeVisible();
   await expectNoA11yViolations(page);
 });
 

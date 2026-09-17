@@ -53,6 +53,11 @@ const unusableIngredient = {
 };
 
 const direction = { title: "Frittata", summary: "eggy bake", whyItFits: "uses the eggs" };
+const directionSelection = {
+  selectedIndex: 0,
+  explanation: "Frittata makes the best use of the ingredients.",
+  clearFavorite: true,
+};
 const draft = {
   title: "Spinach Frittata",
   servings: 2,
@@ -101,7 +106,10 @@ describe("recipe graph (integration, fake model)", () => {
 
   it("runs start -> ... -> finalize on a valid ingredient list", async () => {
     queueResponse("parseIngredients", () => ({ ingredients: [usableIngredient] }));
-    queueResponse("proposeDirections", () => ({ directions: [direction, { ...direction, title: "Omelet" }] }));
+    queueResponse("proposeDirections", () => ({
+      directions: [direction, { ...direction, title: "Omelet" }],
+    }));
+    queueResponse("selectDirection", () => ({ directionSelection }));
     queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
     queueResponse("critique", () => ({ critique: nonBlockingCritique }));
     queueResponse("finalize", () => ({ finalRecipe }));
@@ -118,7 +126,9 @@ describe("recipe graph (integration, fake model)", () => {
   });
 
   it("takes the ingredient-error short path when any ingredient is unusable", async () => {
-    queueResponse("parseIngredients", () => ({ ingredients: [usableIngredient, unusableIngredient] }));
+    queueResponse("parseIngredients", () => ({
+      ingredients: [usableIngredient, unusableIngredient],
+    }));
 
     const config = { configurable: { thread_id: "ingredient-error-path" } };
     const state = {
@@ -136,7 +146,10 @@ describe("recipe graph (integration, fake model)", () => {
 
   it("runs a refine cycle when critique is blocking, then finalizes", async () => {
     queueResponse("parseIngredients", () => ({ ingredients: [usableIngredient] }));
-    queueResponse("proposeDirections", () => ({ directions: [direction, { ...direction, title: "Omelet" }] }));
+    queueResponse("proposeDirections", () => ({
+      directions: [direction, { ...direction, title: "Omelet" }],
+    }));
+    queueResponse("selectDirection", () => ({ directionSelection }));
     queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
     queueResponse("critique", () => ({ critique: blockingCritique }));
     queueResponse("refine", () => ({ recipeDraft: { ...draft, toBuy: ["salt"] } }));
@@ -178,6 +191,7 @@ describe("recipe graph (integration, fake model)", () => {
       queueResponse("proposeDirections", () => ({
         directions: [direction, { ...direction, title: "Omelet" }],
       }));
+      queueResponse("selectDirection", () => ({ directionSelection }));
       queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
       queueResponse("critique", () => ({ critique: nonBlockingCritique }));
       queueResponse("finalize", () => ({ finalRecipe }));
@@ -185,7 +199,10 @@ describe("recipe graph (integration, fake model)", () => {
 
     script();
     const configA = { configurable: { thread_id: "manual-stepping" } };
-    let resultA = await app.invoke({ ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] }, configA);
+    let resultA = await app.invoke(
+      { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] },
+      configA,
+    );
     while (resultA.outcome === "in-progress") {
       resultA = await app.invoke(null, configA);
     }
@@ -195,7 +212,10 @@ describe("recipe graph (integration, fake model)", () => {
     resetResponders();
     script();
     const configB = { configurable: { thread_id: "auto-run" } };
-    let resultB = await app.invoke({ ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] }, configB);
+    let resultB = await app.invoke(
+      { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] },
+      configB,
+    );
     while (resultB.outcome === "in-progress") {
       resultB = await app.invoke(null, configB);
     }
@@ -203,5 +223,138 @@ describe("recipe graph (integration, fake model)", () => {
     for await (const snapshot of app.getStateHistory(configB)) historyB.push(snapshot);
 
     expect(historyA.length).toBe(historyB.length);
+    // SC-005: a full run now takes exactly one more real step than before
+    // this feature (parseIngredients, proposeDirections, selectDirection,
+    // draftRecipe, critique, finalize = 6 real nodes) — plus the 2 scaffold
+    // checkpoints `getStateHistory` always includes (the "input" pre-START
+    // entry and the seeded genesis entry).
+    expect(historyA.length).toBe(8);
+  });
+
+  it("selectDirection judges the candidates; draftRecipe drafts from the selected (non-first) direction (spec US1 AS1)", async () => {
+    const directionB = {
+      title: "Shakshuka",
+      summary: "spiced tomato eggs",
+      whyItFits: "uses the spinach too",
+    };
+    const selection = {
+      selectedIndex: 1,
+      explanation: "Shakshuka makes better use of the full ingredient list.",
+      clearFavorite: true,
+    };
+    queueResponse("parseIngredients", () => ({ ingredients: [usableIngredient] }));
+    queueResponse("proposeDirections", () => ({ directions: [direction, directionB] }));
+    queueResponse("selectDirection", () => ({ directionSelection: selection }));
+    queueResponse("draftRecipe", () => ({ recipeDraft: { ...draft, title: "Shakshuka" } }));
+    queueResponse("critique", () => ({ critique: nonBlockingCritique }));
+    queueResponse("finalize", () => ({ finalRecipe: { ...finalRecipe, title: "Shakshuka" } }));
+
+    const config = { configurable: { thread_id: "select-non-zero" } };
+    let result = await app.invoke(
+      { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] },
+      config,
+    );
+    while (result.outcome === "in-progress") {
+      result = await app.invoke(null, config);
+    }
+
+    expect(result.directionSelection).toEqual(selection);
+    expect(result.finalRecipe?.title).toBe("Shakshuka");
+  });
+
+  it("a clearFavorite:false verdict is a normal outcome, not a failure — the run still completes (spec FR-004, US1 AS2)", async () => {
+    const selection = {
+      selectedIndex: 0,
+      explanation: "Both directions fit equally well; defaulted to the first.",
+      clearFavorite: false,
+    };
+    queueResponse("parseIngredients", () => ({ ingredients: [usableIngredient] }));
+    queueResponse("proposeDirections", () => ({
+      directions: [direction, { ...direction, title: "Omelet" }],
+    }));
+    queueResponse("selectDirection", () => ({ directionSelection: selection }));
+    queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
+    queueResponse("critique", () => ({ critique: nonBlockingCritique }));
+    queueResponse("finalize", () => ({ finalRecipe }));
+
+    const config = { configurable: { thread_id: "select-no-clear-winner" } };
+    let result = await app.invoke(
+      { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] },
+      config,
+    );
+    while (result.outcome === "in-progress") {
+      result = await app.invoke(null, config);
+    }
+
+    expect(result.outcome).toBe("finalized");
+    expect(result.directionSelection).toEqual(selection);
+  });
+
+  it("selectDirection skips the model call entirely with only 1 candidate direction (spec FR-015, research R6)", async () => {
+    queueResponse("parseIngredients", () => ({ ingredients: [usableIngredient] }));
+    queueResponse("proposeDirections", () => ({
+      directions: [direction, { ...direction, title: "Omelet" }],
+    }));
+    queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
+    queueResponse("critique", () => ({ critique: nonBlockingCritique }));
+    queueResponse("finalize", () => ({ finalRecipe }));
+    // Deliberately no "selectDirection" response queued — if the node called
+    // the mocked model anyway, that call would throw for lack of a queued
+    // response, failing this test.
+
+    const config = { configurable: { thread_id: "select-single-candidate" } };
+    let result = await app.invoke(
+      { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] },
+      config,
+    );
+    let snapshot = await app.getState(config);
+    while (snapshot.next[0] !== "selectDirection") {
+      result = await app.invoke(null, config);
+      snapshot = await app.getState(config);
+    }
+
+    // Simulate an edit down to a single candidate (spec FR-015) — the same
+    // shape `/fork` produces for a real user edit — without needing
+    // `proposeDirections`'s own OutputSchema (min 2) to allow it directly.
+    await app.updateState(config, { directions: [direction] }, "proposeDirections");
+    result = await app.invoke(null, config); // selectDirection runs
+
+    expect(result.directionSelection).toEqual({
+      selectedIndex: 0,
+      explanation: "Only one direction was proposed, so it was used.",
+      clearFavorite: true,
+    });
+
+    while (result.outcome === "in-progress") {
+      result = await app.invoke(null, config);
+    }
+    expect(result.outcome).toBe("finalized");
+  });
+
+  it("draftRecipe falls back to directions[0] when directionSelection is still null (spec FR-014 — a checkpoint predating this feature)", async () => {
+    queueResponse("parseIngredients", () => ({ ingredients: [usableIngredient] }));
+    queueResponse("proposeDirections", () => ({
+      directions: [direction, { ...direction, title: "Omelet" }],
+    }));
+    queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
+
+    const config = { configurable: { thread_id: "select-legacy-null" } };
+    let result = await app.invoke(
+      { ...INITIAL_STATE, ingredients: [toRawIngredient("2 eggs")] },
+      config,
+    );
+    let snapshot = await app.getState(config);
+    while (snapshot.next[0] !== "selectDirection") {
+      result = await app.invoke(null, config);
+      snapshot = await app.getState(config);
+    }
+
+    // Advance straight to draftRecipe without selectDirection ever running —
+    // `directionSelection` stays at its default `null`, simulating a
+    // checkpoint from before this feature existed.
+    await app.updateState(config, {}, "selectDirection");
+    result = await app.invoke(null, config); // draftRecipe runs
+
+    expect(result.recipeDraft).toEqual(draft);
   });
 });

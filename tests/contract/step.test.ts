@@ -86,7 +86,11 @@ async function createSession(clientId: string) {
     req("http://localhost/api/recipe/start", { ingredients: ["2 eggs"] }, clientId),
   );
   const json = await res.json();
-  return { sid: json.sessionId as string, branchId: json.branchId as string, checkpointId: json.checkpointId as string };
+  return {
+    sid: json.sessionId as string,
+    branchId: json.branchId as string,
+    checkpointId: json.checkpointId as string,
+  };
 }
 
 describe("POST /api/recipe/:sid/step", () => {
@@ -117,7 +121,7 @@ describe("POST /api/recipe/:sid/step", () => {
     const json = await res.json();
     expect(json.kind).toBe("normal");
     expect(json.state.directions).toHaveLength(2);
-    expect(json.next).toEqual(["draftRecipe"]);
+    expect(json.next).toEqual(["selectDirection"]);
   });
 
   it("ingredient-error: parseIngredients flags an unusable ingredient", async () => {
@@ -231,7 +235,11 @@ describe("POST /api/recipe/:sid/step", () => {
       queueResponse("proposeDirections", () => ({
         directions: [direction, { ...direction, title: "Omelet" }],
       }));
-      const res = await stepReq(sid, { branchId, fromCheckpointId: checkpointId }, "client-rate-step");
+      const res = await stepReq(
+        sid,
+        { branchId, fromCheckpointId: checkpointId },
+        "client-rate-step",
+      );
       expect(res.status).toBe(429);
       const json = await res.json();
       expect(json.error).toBe("rate-limited");
@@ -248,7 +256,11 @@ describe("POST /api/recipe/:sid/step", () => {
       queueResponse("proposeDirections", () => ({
         directions: [direction, { ...direction, title: "Omelet" }],
       }));
-      const first = await stepReq(sid, { branchId, fromCheckpointId: checkpointId }, "client-session-cap");
+      const first = await stepReq(
+        sid,
+        { branchId, fromCheckpointId: checkpointId },
+        "client-session-cap",
+      );
       expect(first.status).toBe(200); // stage_count 0 -> 1, session now capped
 
       const firstJson = await first.json();

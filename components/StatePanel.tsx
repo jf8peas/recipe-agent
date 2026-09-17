@@ -6,6 +6,7 @@ import { DirectionsEditor } from "@/components/fields/DirectionsEditor";
 import { RecipeDraftEditor } from "@/components/fields/RecipeDraftEditor";
 import { CritiquesView } from "@/components/fields/CritiquesView";
 import { FinalRecipeView } from "@/components/fields/FinalRecipeView";
+import { DirectionSelectionEditor } from "@/components/fields/DirectionSelectionEditor";
 import type { EditableField } from "@/lib/field-consumers";
 
 const sectionStyle: CSSProperties = {
@@ -24,9 +25,10 @@ const headingStyle: CSSProperties = {
 
 export interface StatePanelProps {
   state: State;
-  /** Enables inline editing of ingredients/constraints/directions/recipeDraft
-   * (spec FR-023/FR-024) — the fields `/fork` accepts a patch for, per T079's
-   * scope (critiques/finalRecipe stay read-only in this UI). */
+  /** Enables inline editing of ingredients/constraints/directions/
+   * directionSelection/recipeDraft (spec FR-023/FR-024) — the fields `/fork`
+   * accepts a patch for, per T079's scope (critiques/finalRecipe stay
+   * read-only in this UI). */
   editable?: boolean;
   onFieldChange?: (field: EditableField, value: unknown, error: string | null) => void;
 }
@@ -88,6 +90,22 @@ export function StatePanel({ state, editable, onFieldChange }: StatePanelProps) 
               editable && onFieldChange
                 ? (value: DishDirection[] | null, error: string | null) =>
                     onFieldChange("directions", value, error)
+                : undefined
+            }
+          />
+        </div>
+      )}
+
+      {state.directionSelection && (
+        <div style={sectionStyle}>
+          <h3 style={headingStyle}>Direction selected</h3>
+          <DirectionSelectionEditor
+            directionSelection={state.directionSelection}
+            directions={state.directions}
+            editable={editable}
+            onChange={
+              editable && onFieldChange
+                ? (value, error) => onFieldChange("directionSelection", value, error)
                 : undefined
             }
           />

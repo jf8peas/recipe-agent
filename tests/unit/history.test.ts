@@ -37,6 +37,11 @@ vi.mock("../../lib/agent/models", async (importOriginal) => {
 
 const usableIngredient = { ...toRawIngredient("2 eggs"), name: "egg", usable: true };
 const direction = { title: "Frittata", summary: "eggy bake", whyItFits: "uses the eggs" };
+const directionSelection = {
+  selectedIndex: 0,
+  explanation: "Frittata makes the best use of the ingredients.",
+  clearFavorite: true,
+};
 const draft = {
   title: "Spinach Frittata",
   servings: 2,
@@ -138,6 +143,7 @@ describe("buildTimeline", () => {
     queueResponse("proposeDirections", () => ({
       directions: [direction, { ...direction, title: "Omelet" }],
     }));
+    queueResponse("selectDirection", () => ({ directionSelection }));
     queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
 
     const sourceThreadId = "history-fork-source";

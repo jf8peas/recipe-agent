@@ -101,7 +101,7 @@ export interface ExecutionStage {
   description: string;
 }
 
-/** FR-010 — the 6 happy-path stages (excludes the ingredientError side-branch,
+/** FR-010 — the 7 happy-path stages (excludes the ingredientError side-branch,
  * which only runs when an ingredient can't be used — this is the success
  * path from ingredients to a finished recipe). */
 export const EXECUTION_STAGES: ExecutionStage[] = [
@@ -112,6 +112,10 @@ export const EXECUTION_STAGES: ExecutionStage[] = [
   {
     name: "proposeDirections",
     description: "Suggests a small set of different directions the dish could take.",
+  },
+  {
+    name: "selectDirection",
+    description: "Judges the candidate directions and picks the one to draft from.",
   },
   {
     name: "draftRecipe",

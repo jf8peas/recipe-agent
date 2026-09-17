@@ -37,9 +37,23 @@ function extractNumberedLines(prompt: string): string[] {
 }
 
 const FIXED_DIRECTIONS = [
-  { title: "Spinach Frittata", summary: "A simple baked egg dish.", whyItFits: "Uses the eggs and greens." },
-  { title: "Veggie Omelet", summary: "A folded stovetop omelet.", whyItFits: "Quick and uses what's on hand." },
+  {
+    title: "Spinach Frittata",
+    summary: "A simple baked egg dish.",
+    whyItFits: "Uses the eggs and greens.",
+  },
+  {
+    title: "Veggie Omelet",
+    summary: "A folded stovetop omelet.",
+    whyItFits: "Quick and uses what's on hand.",
+  },
 ];
+
+const FIXED_DIRECTION_SELECTION = {
+  selectedIndex: 0,
+  explanation: "Spinach Frittata makes the best use of the ingredients.",
+  clearFavorite: true,
+};
 
 const FIXED_DRAFT = {
   title: "Spinach Frittata",
@@ -84,8 +98,17 @@ function fakeResponseFor(nodeName: string, prompt: string): unknown {
     }
     case "proposeDirections":
       return { directions: FIXED_DIRECTIONS };
-    case "draftRecipe":
-      return { recipeDraft: FIXED_DRAFT };
+    case "selectDirection":
+      return { directionSelection: FIXED_DIRECTION_SELECTION };
+    case "draftRecipe": {
+      // Reflects whichever direction was actually selected (not always
+      // FIXED_DIRECTIONS[0]) — draftRecipePrompt renders "Dish direction:
+      // <title> — ...", so this stays "Spinach Frittata" whenever the
+      // default candidate was picked (every existing fixture) and only
+      // changes for a test that edits the selection to a different one.
+      const directionMatch = prompt.match(/^Dish direction: (.+?) —/m);
+      return { recipeDraft: { ...FIXED_DRAFT, title: directionMatch?.[1] ?? FIXED_DRAFT.title } };
+    }
     case "critique":
       return { critique: FIXED_CRITIQUE };
     case "refine":

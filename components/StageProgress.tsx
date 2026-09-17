@@ -1,6 +1,7 @@
 const STAGES = [
   "parseIngredients",
   "proposeDirections",
+  "selectDirection",
   "draftRecipe",
   "critique",
   "refine",

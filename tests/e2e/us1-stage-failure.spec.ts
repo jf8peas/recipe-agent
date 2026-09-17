@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { startSession, clickStep, nonce, expectNoA11yViolations } from "./helpers";
 
-test("US1 stage failure: StageFailureBanner shows the reason, and Retry succeeds", async ({ page }) => {
+test("US1 stage failure: StageFailureBanner shows the reason, and Retry succeeds", async ({
+  page,
+}) => {
   const n = nonce();
   // Fails `proposeDirections` exactly once (research R3/R4's retry design —
   // "bogus MODEL_DEFAULT" from the task description, reproduced here as a
@@ -29,7 +31,35 @@ test("US1 stage failure: StageFailureBanner shows the reason, and Retry succeeds
   // RunningStage (no matching button at all) shows in between, per
   // clickStep's comment in helpers.ts.
   await expect(
-    page.getByRole("button", { name: /^Step \(/ }).or(page.getByRole("button", { name: "Start a new session" })),
+    page
+      .getByRole("button", { name: /^Step \(/ })
+      .or(page.getByRole("button", { name: "Start a new session" })),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Step (selectDirection)" })).toBeVisible();
+});
+
+test("US1 stage failure: selectDirection fails once, then Retry succeeds (spec FR-011)", async ({
+  page,
+}) => {
+  const n = nonce();
+  await startSession(page, ["2 eggs", `e2e-trigger-failure-selectDirection-${n}`]);
+  await expect(page.getByRole("button", { name: "Step (proposeDirections)" })).toBeVisible();
+  await clickStep(page); // proposeDirections succeeds
+  await expect(page.getByRole("button", { name: "Step (selectDirection)" })).toBeVisible();
+  await clickStep(page); // selectDirection fails
+
+  await expect(page.getByText("Stage failed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Simulated failure (e2e fixture)")).toBeVisible();
+  const retryButton = page.getByRole("button", { name: "Retry" });
+  await expect(retryButton).toBeVisible();
+  await expectNoA11yViolations(page);
+
+  await retryButton.click({ force: true });
+  await expect(retryButton).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("button", { name: /^Step \(/ })
+      .or(page.getByRole("button", { name: "Start a new session" })),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Step (draftRecipe)" })).toBeVisible();
 });

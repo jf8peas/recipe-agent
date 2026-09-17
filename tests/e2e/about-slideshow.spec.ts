@@ -65,7 +65,7 @@ test("US1: opening the slideshow while a stage is running does not lose the resu
 
   await page.getByRole("button", { name: "Return to App" }).click();
   await expect(page.getByRole("heading", { name: "Dish directions" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Step (draftRecipe)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Step (selectDirection)" })).toBeVisible();
 });
 
 test("US2: keyboard-only navigation, focus management, and live-region announcements", async ({

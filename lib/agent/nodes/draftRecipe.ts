@@ -14,7 +14,12 @@ export async function draftRecipe(
     name: "draftRecipe",
   });
   const result = await model.invoke(
-    draftRecipePrompt(state.ingredients, state.constraints, state.directions),
+    draftRecipePrompt(
+      state.ingredients,
+      state.constraints,
+      state.directions,
+      state.directionSelection,
+    ),
     config,
   );
   return { recipeDraft: OutputSchema.parse(result).recipeDraft };

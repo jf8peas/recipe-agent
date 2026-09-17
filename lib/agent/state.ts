@@ -43,6 +43,13 @@ export const RecipeDraftSchema = z.object({
 });
 export type RecipeDraft = z.infer<typeof RecipeDraftSchema>;
 
+export const DirectionSelectionSchema = z.object({
+  selectedIndex: z.number().int().nonnegative(),
+  explanation: z.string(),
+  clearFavorite: z.boolean(),
+});
+export type DirectionSelection = z.infer<typeof DirectionSelectionSchema>;
+
 export const CritiqueSchema = z.object({
   cycle: z.number().int().nonnegative(),
   feasibility: z.string(),
@@ -88,6 +95,7 @@ export const StateSchema = z.object({
   ingredients: z.array(IngredientSchema),
   constraints: ConstraintsSchema,
   directions: z.array(DishDirectionSchema),
+  directionSelection: DirectionSelectionSchema.nullable(),
   recipeDraft: RecipeDraftSchema.nullable(),
   critiques: z.array(CritiqueSchema),
   finalRecipe: FinalRecipeSchema.nullable(),
@@ -107,6 +115,7 @@ export const INITIAL_STATE: State = {
   ingredients: [],
   constraints: { cuisine: null, maxMinutes: null, servings: null, diets: [] },
   directions: [],
+  directionSelection: null,
   recipeDraft: null,
   critiques: [],
   finalRecipe: null,

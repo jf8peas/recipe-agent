@@ -1,9 +1,18 @@
 import { test, expect } from "@playwright/test";
 import { startSession, clickStep, expectNoA11yViolations } from "./helpers";
 
-test("US2 inspect history: browse the timeline, open an earlier entry, exact match", async ({ page }) => {
+test("US2 inspect history: browse the timeline, open an earlier entry, exact match", async ({
+  page,
+}) => {
   await startSession(page, ["2 eggs"]);
   await clickStep(page); // proposeDirections
+  await clickStep(page); // selectDirection
+
+  await expect(page.getByRole("heading", { name: "Direction selected" })).toBeVisible();
+  await expect(
+    page.getByText("Spinach Frittata makes the best use of the ingredients."),
+  ).toBeVisible();
+
   await clickStep(page); // draftRecipe — recipeDraft now populated
 
   await expect(page.getByRole("heading", { name: "Recipe draft" })).toBeVisible();
