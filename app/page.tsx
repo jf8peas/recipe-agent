@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession, type StepResponse } from "@/hooks/useSession";
 import { useSessionList } from "@/hooks/useSessionList";
+import { bestAvailableTitle } from "@/lib/session-title";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { useAdvanceLock } from "@/hooks/useAdvanceLock";
 import { usePauseBetweenStages } from "@/hooks/usePauseBetweenStages";
@@ -74,11 +75,15 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionList.entries.length]);
 
-  // Keep the on-device session list in sync with whichever session becomes active.
+  // Keep the on-device session list in sync with whichever session becomes
+  // active, and with its title as the recipe progresses — mirrors the
+  // server's own progressive titling (lib/session-title.ts) so the list
+  // doesn't need a full /mine refetch to pick up a newly-known title.
+  const currentTitle = snapshot ? bestAvailableTitle(snapshot.state) : null;
   useEffect(() => {
-    if (snapshot?.sessionId) sessionList.touch(snapshot.sessionId, null);
+    if (snapshot?.sessionId) sessionList.touch(snapshot.sessionId, currentTitle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot?.sessionId]);
+  }, [snapshot?.sessionId, currentTitle]);
 
   // Rebuild the list from /mine if localStorage came up empty (spec FR-032) —
   // private browsing, cleared site data, or a first load on this device.

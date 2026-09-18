@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getClientId, jsonError, requireOwnedSession } from "../../../../../lib/api-helpers";
 import { getPool } from "../../../../../lib/db/pool";
-import { incrementStageCount } from "../../../../../lib/db/sessions";
+import { incrementStageCount, updateSessionTitle } from "../../../../../lib/db/sessions";
+import { titleForStage } from "../../../../../lib/session-title";
 import { getBranchesForSession } from "../../../../../lib/db/branches";
 import { recordUsageEvent, countClientEvents, countGlobalStageEvents } from "../../../../../lib/db/usage";
 import {
@@ -139,6 +140,10 @@ export async function POST(
   );
   void capped;
   await recordUsageEvent({ clientId, threadId: branchId, kind: "stage" }, pool);
+
+  const completedStage = fromSnapshot.next[0];
+  const title = completedStage ? titleForStage(completedStage, state) : null;
+  if (title) await updateSessionTitle(sid, title, pool);
 
   const snapshot = await graph.getState({ configurable: { thread_id: branchId } });
   const branches = await getBranchesForSession(sid, pool);

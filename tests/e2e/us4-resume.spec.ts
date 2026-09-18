@@ -39,3 +39,18 @@ test("US4 resume: the session list shows a started session and reopens it", asyn
 
   await expect(page.getByRole("button", { name: "Step (proposeDirections)" })).toBeVisible();
 });
+
+test("US4 resume: the session list shows the recipe's title once selectDirection has run", async ({
+  page,
+}) => {
+  await startSession(page, ["2 eggs", "spinach"]);
+  await clickStep(page); // proposeDirections
+  await clickStep(page); // selectDirection
+
+  await page.evaluate(() => localStorage.removeItem("recipe-agent.currentSessionId"));
+  await page.reload();
+
+  await expect(page.getByRole("heading", { name: "Your sessions" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Spinach Frittata/ })).toBeVisible();
+  await expect(page.getByRole("button").filter({ hasText: "Untitled session" })).toHaveCount(0);
+});

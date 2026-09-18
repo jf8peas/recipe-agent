@@ -58,6 +58,18 @@ export async function setCapped(sessionId: string, pool: Pool = getPool()): Prom
   await pool.query("UPDATE sessions SET status = 'capped' WHERE session_id = $1", [sessionId]);
 }
 
+/** Titles a session once a real recipe name is known (`lib/session-title.ts`
+ * decides the title text; this just writes it). Called after `selectDirection`,
+ * `draftRecipe`, and `finalize` complete, so the title gets progressively
+ * more accurate as the run advances. */
+export async function updateSessionTitle(
+  sessionId: string,
+  title: string,
+  pool: Pool = getPool(),
+): Promise<void> {
+  await pool.query("UPDATE sessions SET title = $2 WHERE session_id = $1", [sessionId, title]);
+}
+
 /** Cascades to `branches` via FK (ON DELETE CASCADE) — caller must still
  * delete each branch's LangGraph checkpoints first (constitution v3.0.0). */
 export async function deleteSession(sessionId: string, pool: Pool = getPool()): Promise<void> {

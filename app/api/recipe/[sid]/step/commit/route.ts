@@ -6,6 +6,8 @@ import { getBranchesForSession } from "../../../../../../lib/db/branches";
 import { getGraph } from "../../../../../../lib/agent/runtime";
 import { buildTimeline } from "../../../../../../lib/history";
 import { StateSchema } from "../../../../../../lib/agent/state";
+import { updateSessionTitle } from "../../../../../../lib/db/sessions";
+import { titleForStage } from "../../../../../../lib/session-title";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -50,6 +52,10 @@ export async function POST(
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     try {
       await graph.updateState(config, heldState, asNode);
+
+      const title = titleForStage(asNode, heldState);
+      if (title) await updateSessionTitle(sid, title, pool);
+
       const snapshot = await graph.getState({ configurable: { thread_id: branchId } });
       const branches = await getBranchesForSession(sid, pool);
       const timeline = await buildTimeline(graph, branches);

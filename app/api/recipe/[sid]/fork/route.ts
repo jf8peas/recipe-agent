@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getClientId, jsonError, requireOwnedSession } from "../../../../../lib/api-helpers";
 import { getPool } from "../../../../../lib/db/pool";
 import { getBranchesForSession, insertBranch } from "../../../../../lib/db/branches";
+import { updateSessionTitle } from "../../../../../lib/db/sessions";
+import { bestAvailableTitle } from "../../../../../lib/session-title";
 import { getGraph } from "../../../../../lib/agent/runtime";
 import { buildTimeline } from "../../../../../lib/history";
 import { forkReplay } from "../../../../../lib/fork-replay";
@@ -100,6 +102,13 @@ export async function POST(
     { threadId: newThreadId, sessionId: sid, parentThreadId: branchId, forkedFromCheckpointId: checkpointId },
     pool,
   );
+
+  // A fork's patch can jump straight to editing any of the three
+  // title-bearing fields, not necessarily one stage at a time, so the
+  // title is recomputed from whatever's now in `replay.state` rather than
+  // gated on a single "just-completed" stage (lib/session-title.ts).
+  const title = bestAvailableTitle(replay.state);
+  if (title) await updateSessionTitle(sid, title, pool);
 
   const branches = await getBranchesForSession(sid, pool);
   const timeline = await buildTimeline(graph, branches);
