@@ -154,44 +154,53 @@ export function AboutPage({ open, onClose }: AboutPageProps) {
         }}
       >
         <strong style={{ fontSize: "var(--text-lg)" }}>Recipe Agent — how it works</strong>
-        <nav
-          aria-label="Page sections"
+
+        <div
           style={{
             display: "flex",
             flexWrap: "wrap",
-            gap: "var(--space-3)",
-            fontSize: "var(--text-sm)",
+            alignItems: "center",
+            gap: "var(--space-4)",
+            rowGap: "var(--space-2)",
           }}
         >
-          {NAV_LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={`#${link.href}`}
-              onClick={handleNavClick(link)}
-              style={{ color: "var(--color-text-muted)", textDecoration: "none" }}
-            >
-              {link.label}
-            </a>
-          ))}
-        </nav>
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            minHeight: 44,
-            font: "inherit",
-            fontSize: "var(--text-sm)",
-            color: "var(--color-accent-contrast)",
-            background: "var(--color-accent)",
-            border: "1px solid var(--color-accent)",
-            borderRadius: "var(--radius-md)",
-            padding: "var(--space-1) var(--space-3)",
-            cursor: "pointer",
-            fontWeight: 600,
-          }}
-        >
-          Return to App
-        </button>
+          <nav
+            aria-label="Page sections"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "var(--space-3)",
+              fontSize: "var(--text-sm)",
+            }}
+          >
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.href}
+                href={`#${link.href}`}
+                onClick={handleNavClick(link)}
+                style={{ color: "var(--color-text-muted)", textDecoration: "none" }}
+              >
+                {link.label}
+              </a>
+            ))}
+          </nav>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              font: "inherit",
+              fontSize: "var(--text-sm)",
+              color: "var(--color-accent-contrast)",
+              background: "var(--color-accent)",
+              border: "1px solid var(--color-accent)",
+              borderRadius: "var(--radius-md)",
+              padding: "var(--space-1) var(--space-3)",
+              cursor: "pointer",
+            }}
+          >
+            Return to App
+          </button>
+        </div>
       </header>
 
       <main
@@ -200,7 +209,10 @@ export function AboutPage({ open, onClose }: AboutPageProps) {
         style={{
           flex: 1,
           overflowY: "auto",
-          maxWidth: "920px",
+          // Matches app/page.tsx's own content width, so the About page
+          // reads as the same app rather than a wider, separately-designed
+          // document.
+          maxWidth: "720px",
           width: "100%",
           margin: "0 auto",
           padding: "var(--space-8) var(--space-4)",

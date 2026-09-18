@@ -23,6 +23,9 @@ export function AppHeader() {
     <>
       <header
         style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 1,
           minHeight: "var(--header-height)",
           display: "flex",
           flexWrap: "wrap",

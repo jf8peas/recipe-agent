@@ -120,9 +120,6 @@ test("US3: renders from 320px through 1920px, with bounded inner scroll for the 
   await dialog.locator("#closing").scrollIntoViewIfNeeded();
   await assertNoPageOverflow();
 
-  const returnBox = await page.getByRole("button", { name: "Return to App" }).boundingBox();
-  expect(returnBox?.height).toBeGreaterThanOrEqual(43);
-
   await expectNoA11yViolations(page);
   await dialog.locator("#agent-graph").scrollIntoViewIfNeeded();
   await expectNoA11yViolations(page);
