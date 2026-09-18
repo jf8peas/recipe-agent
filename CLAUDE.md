@@ -5,16 +5,16 @@ recipe, with full time-travel (inspect / branch / edit / replay) over the graph'
 state history.
 
 <!-- SPECKIT START -->
-Active plan: [specs/003-direction-selection/plan.md](specs/003-direction-selection/plan.md)
+Active plan: [specs/004-about-page-redesign/plan.md](specs/004-about-page-redesign/plan.md)
 
-- Spec: [specs/003-direction-selection/spec.md](specs/003-direction-selection/spec.md)
-- Research: [specs/003-direction-selection/research.md](specs/003-direction-selection/research.md)
-- Data model: [specs/003-direction-selection/data-model.md](specs/003-direction-selection/data-model.md)
-- Node contract: [specs/003-direction-selection/contracts/select-direction-node.md](specs/003-direction-selection/contracts/select-direction-node.md)
-- Quickstart: [specs/003-direction-selection/quickstart.md](specs/003-direction-selection/quickstart.md)
+- Spec: [specs/004-about-page-redesign/spec.md](specs/004-about-page-redesign/spec.md)
+- Research: [specs/004-about-page-redesign/research.md](specs/004-about-page-redesign/research.md)
+- Data model: [specs/004-about-page-redesign/data-model.md](specs/004-about-page-redesign/data-model.md)
+- UI contract: [specs/004-about-page-redesign/contracts/about-page-ui.md](specs/004-about-page-redesign/contracts/about-page-ui.md)
+- Quickstart: [specs/004-about-page-redesign/quickstart.md](specs/004-about-page-redesign/quickstart.md)
 - Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v3.0.0)
 
-Prior features (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md), [specs/002-about-app-slideshow/plan.md](specs/002-about-app-slideshow/plan.md)
+Prior features (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md), [specs/003-direction-selection/plan.md](specs/003-direction-selection/plan.md). Feature 002 ("About This App" slideshow) has been fully replaced by feature 004 — see spec 004 FR-001.
 <!-- SPECKIT END -->
 
 ## Non-negotiables (from the constitution)
@@ -57,7 +57,12 @@ IDs.
 
 ## Current status
 
-Features 001 (Recipe Agent core), 002 ("About This App" slideshow), and 003
-(direction selection stage) are all implemented; constitution at v3.0.0.
-Feature 003 is implemented locally, verified (`tsc`/`vitest`/`build`/
-`playwright` all green), and not yet deployed to Vercel.
+Features 001 (Recipe Agent core), 003 (direction selection stage), and 004
+(About page redesign) are implemented; constitution at v3.0.0. Feature 002
+("About This App" slideshow) has been fully replaced by feature 004 — a
+single full-scrolling reference page with a sticky topic nav, matching
+`design/v002/about.html` — `components/AboutSlideshow.tsx` and its 5-slide
+content model are deleted; `components/about/` and a rewritten
+`lib/about-content.ts` replace them. Local work (features 001, 003, 004) is
+verified (`tsc`/`vitest`/`build`/`playwright` all green) but not yet
+deployed to Vercel.

@@ -5,10 +5,21 @@ time — with full time-travel: every stage's output is a checkpoint you can
 inspect, edit, and replay from.
 
 Live spec/plan/task docs (the authoritative source for anything not covered
-here) live under [specs/001-recipe-agent/](specs/001-recipe-agent/), governed
-by [.specify/memory/constitution.md](.specify/memory/constitution.md). This
-README is a reader's map to the crux of the app — the agent graph — not a
-replacement for those.
+here) live under [specs/](specs/), governed by
+[.specify/memory/constitution.md](.specify/memory/constitution.md):
+
+- [specs/001-recipe-agent/](specs/001-recipe-agent/) — the core app: the
+  agent graph, time-travel, and everything below in this README.
+- [specs/003-direction-selection/](specs/003-direction-selection/) — the
+  `selectDirection` stage documented below, closing the gap where
+  `draftRecipe` used to always draft from the first proposed direction.
+- [specs/004-about-page-redesign/](specs/004-about-page-redesign/) — the
+  in-app "About This App" reference page (an architecture walkthrough for
+  anyone using the deployed app, reachable from the header). Replaces the
+  original five-slide slideshow from spec 002.
+
+This README is a reader's map to the crux of the app — the agent graph — not
+a replacement for those.
 
 ## Stack
 
@@ -42,9 +53,9 @@ implementation.
 
 ## The agent graph
 
-This is the crux of the app: six real stages plus one terminal error stage,
-wired up in [lib/agent/graph.ts](lib/agent/graph.ts). Every node validates
-its input and output against a Zod schema
+This is the crux of the app: seven real stages plus one terminal error
+stage, wired up in [lib/agent/graph.ts](lib/agent/graph.ts). Every node
+validates its input and output against a Zod schema
 ([lib/agent/state.ts](lib/agent/state.ts)); the graph is compiled with
 `interruptAfter` on every node, so each API request advances exactly one
 stage.
@@ -56,7 +67,8 @@ flowchart TD
     parseIngredients{{"parseIngredients"}} -->|"any ingredient unusable"| ingredientError[["ingredientError (no model call)"]]
     parseIngredients -->|"all usable"| proposeDirections{{"proposeDirections"}}
 
-    proposeDirections --> draftRecipe{{"draftRecipe"}}
+    proposeDirections --> selectDirection{{"selectDirection"}}
+    selectDirection --> draftRecipe{{"draftRecipe"}}
     draftRecipe --> critique{{"critique"}}
 
     critique -->|"blocking, under refine limit"| refine{{"refine"}}
@@ -69,7 +81,7 @@ flowchart TD
     classDef model fill:#fdf0e8,stroke:#b5502f,color:#241f1a;
     classDef critiqueModel fill:#f4e8e3,stroke:#8a3a20,color:#241f1a;
     classDef terminal fill:#f2ede6,stroke:#6b6156,color:#241f1a;
-    class parseIngredients,proposeDirections,draftRecipe,refine,finalize model;
+    class parseIngredients,proposeDirections,selectDirection,draftRecipe,refine,finalize model;
     class critique critiqueModel;
     class ingredientError terminal;
 ```
@@ -78,8 +90,9 @@ flowchart TD
 |---|---|---|---|---|
 | `parseIngredients` | `MODELS.default` | `ingredients` (raw), `constraints` | `ingredients` (classified) | `ingredientError` if any ingredient is unusable, else `proposeDirections` |
 | `ingredientError` | — (no model call) | `ingredients` | `outcome: "ingredient-error"` | end |
-| `proposeDirections` | `MODELS.default` | `ingredients`, `constraints` | `directions` (2–3) | `draftRecipe` |
-| `draftRecipe` | `MODELS.default` | `ingredients`, `constraints`, `directions` | `recipeDraft` | `critique` |
+| `proposeDirections` | `MODELS.default` | `ingredients`, `constraints` | `directions` (2–3) | `selectDirection` |
+| `selectDirection` | `MODELS.default` (skipped if only 1 candidate — [spec 003](specs/003-direction-selection/)) | `ingredients`, `constraints`, `directions` | `directionSelection` (chosen index, why, clear-favorite-or-default) | `draftRecipe` |
+| `draftRecipe` | `MODELS.default` | `ingredients`, `constraints`, `directions`, `directionSelection` | `recipeDraft` | `critique` |
 | `critique` | `MODELS.critique` (stronger model) | `recipeDraft`, `constraints`, `critiques` | `critiques` (appended) | `refine` if the latest critique is blocking and under `MAX_REFINE_CYCLES`, else `finalize` |
 | `refine` | `MODELS.default` | `recipeDraft`, latest `critique` | `recipeDraft`, `refineCount++` | `critique` |
 | `finalize` | `MODELS.default` | `recipeDraft`, `constraints` | `finalRecipe`, `outcome: "finalized"` | end |
@@ -132,7 +145,34 @@ For each direction give a short title, a 1-2 sentence summary, and a brief
 note on why it fits the ingredients and constraints.
 ```
 
-#### 3. `draftRecipe`
+#### 3. `selectDirection`
+
+Skipped entirely (no model call, no prompt) when only one direction exists
+to choose from — see [spec 003, research R6](specs/003-direction-selection/research.md).
+
+```
+Given these candidate dish directions, judge which one best fits the
+available ingredients and constraints, and is the strongest choice to cook.
+Report its index (0-based, in the order listed below), a brief explanation
+of why, and whether it was a clear favorite or a close call among equivalent
+options.
+
+Constraints:
+<constraintsBlock>
+
+Usable ingredients:
+<bulleted list: name (quantity)>
+
+Candidate directions:
+<numbered list: index. title — summary (whyItFits)>
+
+If no candidate is clearly better than the others, that's a valid outcome:
+report clearFavorite: false, pick the first-listed candidate (index 0), and
+say plainly in the explanation that it was a default pick among equivalent
+options — don't invent a confident-sounding reason for it.
+```
+
+#### 4. `draftRecipe`
 
 ```
 Write a full recipe draft for this dish direction, using the
@@ -141,7 +181,7 @@ available ingredients.
 Constraints:
 <constraintsBlock>
 
-Dish direction: <first direction's title> — <its summary>
+Dish direction: <selected direction's title> — <its summary>
 
 Usable ingredients:
 <bulleted list: name (quantity)>
@@ -151,7 +191,7 @@ estimated time in minutes where sensible, and a technique name if relevant),
 and a "toBuy" list of anything needed but not among the ingredients above.
 ```
 
-#### 4. `critique` (uses `MODELS.critique`)
+#### 5. `critique` (uses `MODELS.critique`)
 
 ```
 Critique this recipe draft as an experienced chef. Judge whether the
@@ -168,7 +208,7 @@ Recipe draft:
 <recipeDraft as JSON>
 ```
 
-#### 5. `refine`
+#### 6. `refine`
 
 ```
 Revise this recipe draft to address the critique below. Keep what
@@ -181,7 +221,7 @@ Critique to address:
 <latest critique as JSON>
 ```
 
-#### 6. `finalize`
+#### 7. `finalize`
 
 ```
 Finalize this recipe: scale it to the requested servings (if given),
@@ -234,7 +274,21 @@ This is built for Vercel + Neon:
    (`/api/cron/purge`, `SESSION_PURGE_DAYS`-based retention) — nothing else
    to configure.
 
+## In the app
+
+The header's **About This App** button opens a full-scrolling reference page
+walking a reader through this same architecture — tech stack,
+persistence/time-travel, the repository layout, and the execution flow
+above — for anyone using the deployed app who wants the picture without
+reading this file. See [specs/004-about-page-redesign/](specs/004-about-page-redesign/)
+for its own spec/plan; its content lives in
+[lib/about-content.ts](lib/about-content.ts) and needs updating by hand
+alongside any future change to the graph (it is static copy, not
+introspected live — see that spec's Assumptions).
+
 ## Where to look next
+
+**Feature 001 — the core app** (agent graph, time-travel, everything above):
 
 - [specs/001-recipe-agent/spec.md](specs/001-recipe-agent/spec.md) — full
   functional requirements and user stories.
@@ -245,5 +299,26 @@ This is built for Vercel + Neon:
 - [specs/001-recipe-agent/research.md](specs/001-recipe-agent/research.md) —
   the design decisions behind the trickier parts (time-travel, rate limits,
   cancellation, save-failure recovery).
-- [specs/001-recipe-agent/tasks.md](specs/001-recipe-agent/tasks.md) — current
-  implementation progress, task by task.
+- [specs/001-recipe-agent/tasks.md](specs/001-recipe-agent/tasks.md) — task
+  history for the core app.
+
+**Feature 003 — the `selectDirection` stage**:
+
+- [specs/003-direction-selection/spec.md](specs/003-direction-selection/spec.md)
+  — why `draftRecipe` no longer always drafts from the first proposed
+  direction, and the deterministic fallback when no candidate stands out.
+- [specs/003-direction-selection/data-model.md](specs/003-direction-selection/data-model.md)
+  — the `directionSelection` channel and how the edit/fork field-consumer
+  map changed.
+- [specs/003-direction-selection/research.md](specs/003-direction-selection/research.md)
+  — the full verified list of every other place a graph stage name is
+  hard-coded (worth reading before adding a future stage).
+
+**Feature 004 — the "About This App" reference page**:
+
+- [specs/004-about-page-redesign/spec.md](specs/004-about-page-redesign/spec.md)
+  — requirements for the in-app architecture walkthrough above, replacing
+  spec 002's five-slide model with a single full-scrolling page.
+- [specs/004-about-page-redesign/research.md](specs/004-about-page-redesign/research.md)
+  — why it's a hand-rolled overlay with no new dependency, and how the
+  content/diagrams/topic-nav carry over the app's own established patterns.

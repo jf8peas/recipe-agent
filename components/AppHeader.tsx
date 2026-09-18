@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePauseBetweenStages } from "@/hooks/usePauseBetweenStages";
 import { AUTHOR_LINKEDIN_URL } from "@/lib/about-content";
-import { AboutSlideshow } from "@/components/AboutSlideshow";
+import { AboutPage } from "@/components/about/AboutPage";
 
 const FEEDBACK_URL = "https://github.com/jf8peas/recipe-agent/issues";
 
@@ -11,9 +11,9 @@ const FEEDBACK_URL = "https://github.com/jf8peas/recipe-agent/issues";
  * Persistent header on every screen (spec FR-046–FR-049): title, author +
  * feedback links (new tab, never disturb the current session), the
  * Step vs Auto-run toggle (FR-034/FR-036), and the "About This App"
- * slideshow trigger (spec 002, FR-001). `AboutSlideshow` is a sibling of
- * `{children}` in the root layout, so opening it never unmounts or
- * otherwise touches whatever session view is currently showing (FR-002/FR-004).
+ * reference page trigger (spec 004, FR-001–FR-002). `AboutPage` is a sibling
+ * of `{children}` in the root layout, so opening it never unmounts or
+ * otherwise touches whatever session view is currently showing (FR-005).
  */
 export function AppHeader() {
   const [pauseBetweenStages, setPauseBetweenStages] = usePauseBetweenStages();
@@ -89,7 +89,7 @@ export function AppHeader() {
           </button>
         </div>
       </header>
-      <AboutSlideshow open={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
+      <AboutPage open={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
     </>
   );
 }

@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>About Recipe Agent — How It Works</title>
+<style>
+  /* ---- Design tokens, copied from app/tokens.css so this page matches the
+     running app exactly, in both light and dark mode. ---- */
+  :root {
+    --color-bg: #faf8f5;
+    --color-surface: #ffffff;
+    --color-border: #e4ddd3;
+    --color-text: #241f1a;
+    --color-text-muted: #6b6156;
+    --color-accent: #b5502f;
+    --color-accent-contrast: #ffffff;
+    --color-success: #2f6d4f;
+    --color-warning: #a06a00;
+    --color-danger: #a3312a;
+    --color-focus: #1a5fb4;
+    --color-kind-normal: var(--color-text-muted);
+    --color-kind-finalized: var(--color-success);
+    --color-kind-ingredient-error: var(--color-danger);
+    --color-kind-stage-failure: var(--color-warning);
+    --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
+    --space-5: 1.5rem; --space-6: 2rem; --space-8: 3rem;
+    --radius-sm: 4px; --radius-md: 8px; --radius-lg: 12px;
+    --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", monospace;
+    --text-xs: 0.75rem; --text-sm: 0.875rem; --text-base: 1rem; --text-lg: 1.25rem; --text-xl: 1.5rem;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    --header-height: 56px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-bg: #1c1815; --color-surface: #262019; --color-border: #3a322a;
+      --color-text: #f2ede6; --color-text-muted: #b3a99c;
+      --color-accent: #e0794f; --color-accent-contrast: #1c1815;
+      --color-success: #6fcf9b; --color-warning: #e0b04a; --color-danger: #e2716a;
+      --color-focus: #6fa8ea; color-scheme: dark;
+    }
+  }
+  /* Extra scale used only by this page — built from the same tokens, kept
+     out of tokens.css because a one-off "hero" size isn't a reusable token. */
+  :root { --text-2xl: 2rem; --text-3xl: 2.75rem; }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.55;
+  }
+  h1, h2, h3, p, ul, ol, table { margin: 0; }
+  a { color: var(--color-accent); }
+  code, .mono { font-family: var(--font-mono); }
+
+  /* Header — mirrors components/AppHeader.tsx */
+  .about-header {
+    position: sticky; top: 0; z-index: 10;
+    min-height: var(--header-height);
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  .about-header strong { font-size: var(--text-lg); }
+  .about-nav { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--text-sm); }
+  .about-nav a { color: var(--color-text-muted); text-decoration: none; }
+  .about-nav a:hover { color: var(--color-accent); }
+
+  main { max-width: 920px; margin: 0 auto; padding: var(--space-8) var(--space-4) var(--space-8); }
+
+  section { padding: var(--space-8) 0; border-bottom: 1px solid var(--color-border); }
+  section:last-of-type { border-bottom: none; }
+
+  .kicker {
+    font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 600;
+    color: var(--color-accent); letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: var(--space-2);
+  }
+  h1.hero { font-size: var(--text-3xl); font-weight: 700; line-height: 1.15; margin-bottom: var(--space-3); }
+  h2 { font-size: var(--text-2xl); font-weight: 700; line-height: 1.2; margin-bottom: var(--space-3); }
+  h3 { font-size: var(--text-lg); font-weight: 600; }
+  .lede { font-size: var(--text-lg); color: var(--color-text-muted); line-height: 1.5; max-width: 68ch; }
+  .body-text { color: var(--color-text-muted); max-width: 72ch; }
+  .body-text + .body-text { margin-top: var(--space-3); }
+
+  .card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    padding: var(--space-4);
+  }
+  .card h3 { margin-bottom: var(--space-2); }
+  .card p { color: var(--color-text-muted); font-size: var(--text-sm); }
+
+  .grid { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 720px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+  .callout {
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    background: var(--color-text);
+    color: var(--color-bg);
+    margin-top: var(--space-4);
+  }
+  .callout h3 { color: inherit; }
+  .callout p { color: inherit; opacity: 0.75; }
+  .callout .accent { color: var(--color-accent); }
+
+  .step-num {
+    font-family: var(--font-mono); font-weight: 700; color: var(--color-accent);
+    font-size: var(--text-sm); margin-bottom: var(--space-2); display: block;
+  }
+
+  .btn-pill {
+    display: inline-block; margin-top: var(--space-4);
+    padding: var(--space-2) var(--space-4);
+    border-radius: 999px; background: var(--color-accent); color: var(--color-accent-contrast);
+    font-weight: 600; font-size: var(--text-sm); text-decoration: none;
+  }
+
+  table { width: 100%; border-collapse: collapse; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; margin-top: var(--space-4); font-size: var(--text-sm); }
+  th, td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); vertical-align: top; }
+  thead th { background: var(--color-text); color: var(--color-bg); font-weight: 600; }
+  tbody tr:nth-child(even) { background: var(--color-bg); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.mono, th.mono { font-family: var(--font-mono); }
+  .accent-row td { background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)); color: var(--color-accent); font-weight: 600; }
+
+  .badge { display: inline-block; font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .badge-node { background: color-mix(in srgb, var(--color-accent) 16%, var(--color-surface)); color: var(--color-accent); }
+  .badge-edge { background: color-mix(in srgb, var(--color-warning) 20%, var(--color-surface)); color: var(--color-warning); }
+  .badge-critique { background: color-mix(in srgb, var(--color-danger) 14%, var(--color-surface)); color: var(--color-danger); }
+
+  .legend { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2); }
+  .legend .solid { border-bottom: 2px solid var(--color-text-muted); display: inline-block; width: 20px; margin: 0 4px -2px; }
+  .legend .dashed { border-bottom: 2px dashed var(--color-text-muted); display: inline-block; width: 20px; margin: 0 4px -2px; }
+
+  .diagram { position: relative; }
+  .diagram svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  /* Fully responsive diagrams: everything — shapes, connectors, and text —
+     lives inside one <svg viewBox>, so the whole picture (labels included)
+     scales as a single vector image with the container. No pixel-positioned
+     HTML overlay, so there's nothing that can drift out of alignment. */
+  .diagram-responsive svg { display: block; width: 100%; height: auto; }
+  .node-circle {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    border-radius: 50%; border: 2px solid var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700; line-height: 1.2;
+    color: var(--color-text);
+  }
+  .node-circle.critique-node { border-color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface)); }
+  .node-end {
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 999px; background: var(--color-text); color: var(--color-bg);
+    font-size: var(--text-sm); font-weight: 600;
+  }
+  .diamond {
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--color-warning) 20%, var(--color-surface));
+    border: 2px solid var(--color-warning); transform: rotate(45deg);
+  }
+  .diamond span { transform: rotate(-45deg); font-family: var(--font-mono); font-size: 9px; font-weight: 700; color: var(--color-warning); }
+
+  .footer-links { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-5); }
+
+  ul.plain { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+  ul.plain li { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text-muted); }
+</style>
+</head>
+<body>
+
+<header class="about-header">
+  <strong>Recipe Agent — how it works</strong>
+  <nav class="about-nav">
+    <a href="#pitch">Overview</a>
+    <a href="#journey">Using it</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#agent-graph">Agent graph</a>
+    <a href="#state">State &amp; persistence</a>
+    <a href="#branching">Branching</a>
+    <a href="#data-model">Data model</a>
+    <a href="#repo">Repo</a>
+    <a href="#api">API</a>
+    <a href="#principles">Principles</a>
+  </nav>
+</header>
+
+<main>
+
+  <!-- Cover -->
+  <section id="cover" style="border-bottom:none; padding-top: var(--space-6);">
+    <p class="kicker">Recipe Agent</p>
+    <h1 class="hero">How it works</h1>
+    <p class="lede">An ingredient list becomes a finished recipe, one agent stage at a time — with full time-travel over every step it took to get there. This page works for a non-technical reader and an engineer alike.</p>
+  </section>
+
+  <!-- Author -->
+  <section id="author">
+    <p class="kicker">Who built this</p>
+    <h2>John Fong</h2>
+    <p class="body-text">An on-the-tools business analyst who builds full-stack data products end to end. Recipe Agent is a personal project exploring how to use LangGraph to orchestrate an agentic process — with full time-travel over an AI system's state history.</p>
+    <a class="btn-pill" href="https://www.linkedin.com/in/john-fong-04b7a120/" target="_blank" rel="noopener noreferrer">View LinkedIn profile →</a>
+  </section>
+
+  <!-- Pitch -->
+  <section id="pitch">
+    <p class="kicker">In one sentence</p>
+    <h2>Turn a list of ingredients into a finished recipe — and never lose a version of it</h2>
+    <div class="grid grid-3" style="align-items:center;">
+      <div class="card" style="text-align:center;">
+        <h3>Ingredients</h3>
+        <p>"2 eggs, spinach, feta…"</p>
+      </div>
+      <div class="card" style="text-align:center; background:var(--color-text); border-color:var(--color-text);">
+        <h3 style="color:var(--color-bg);">Recipe Agent</h3>
+        <p style="color:var(--color-text-muted);">A seven-node agent pipeline</p>
+      </div>
+      <div class="card" style="text-align:center;">
+        <h3>A finished recipe</h3>
+        <p>Steps, timing, nutrition</p>
+      </div>
+    </div>
+    <div class="grid grid-3">
+      <div class="card" style="border-top: 3px solid var(--color-accent);">
+        <h3>Paced, not instant</h3>
+        <p>The agent pauses after every stage instead of racing to the end, so you can watch it think.</p>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--color-accent);">
+        <h3>Nothing is thrown away</h3>
+        <p>Every stage's output is saved, so the whole run's history is always there to look back on.</p>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--color-accent);">
+        <h3>Edit the past, not just the present</h3>
+        <p>Change an earlier answer and replay from there — that's "time travel," next.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Time travel -->
+  <section id="time-travel">
+    <p class="kicker">The core idea</p>
+    <h2>Every stage is saved — so you can rewind, edit, and replay</h2>
+    <p class="body-text">Nothing the agent produces is ever overwritten. Each stage's result is kept as its own checkpoint, and each checkpoint remembers the one before it. That means you can go back to any earlier point in a run, change something, and continue from there — without disturbing the original.</p>
+
+    <div class="diagram-responsive" style="margin-top:var(--space-5); max-width:640px;">
+      <svg viewBox="0 0 700 260" role="img" aria-label="Five checkpoints in the original branch. A new branch forks at checkpoint 3, replaying checkpoints 3 through 5 with the edit applied.">
+        <defs>
+          <marker id="tt-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill:var(--color-text-muted)"/></marker>
+          <marker id="tt-arrow-accent" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill:var(--color-accent)"/></marker>
+        </defs>
+        <text x="40" y="18" style="font:600 12px var(--font-sans); fill:var(--color-text-muted)">Original branch</text>
+        <!-- Labels sit in their own clear rows: "edit + replay" between the two
+             rows of circles, "New branch…" above row 2 with room to spare, so
+             neither is crossed by a connector or a node. -->
+        <text x="352" y="122" style="font:12px var(--font-sans); fill:var(--color-accent)">edit + replay</text>
+        <text x="330" y="162" style="font:600 12px var(--font-sans); fill:var(--color-accent)">New branch — forked at checkpoint 3</text>
+
+        <line x1="66" y1="50" x2="164" y2="50" style="stroke:var(--color-text-muted); stroke-width:2" marker-end="url(#tt-arrow)"/>
+        <line x1="216" y1="50" x2="314" y2="50" style="stroke:var(--color-text-muted); stroke-width:2" marker-end="url(#tt-arrow)"/>
+        <line x1="366" y1="50" x2="464" y2="50" style="stroke:var(--color-text-muted); stroke-width:2" marker-end="url(#tt-arrow)"/>
+        <line x1="516" y1="50" x2="614" y2="50" style="stroke:var(--color-text-muted); stroke-width:2" marker-end="url(#tt-arrow)"/>
+        <line x1="340" y1="76" x2="340" y2="104" style="stroke:var(--color-accent); stroke-width:2; stroke-dasharray:5,5" marker-end="url(#tt-arrow-accent)"/>
+        <line x1="406" y1="200" x2="464" y2="200" style="stroke:var(--color-accent); stroke-width:2" marker-end="url(#tt-arrow-accent)"/>
+        <line x1="516" y1="200" x2="614" y2="200" style="stroke:var(--color-accent); stroke-width:2" marker-end="url(#tt-arrow-accent)"/>
+
+        <circle cx="40" cy="50" r="26" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-text-muted); stroke-width:2"/>
+        <text x="40" y="57" text-anchor="middle" style="font:700 18px var(--font-mono); fill:var(--color-text)">1</text>
+        <circle cx="190" cy="50" r="26" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-text-muted); stroke-width:2"/>
+        <text x="190" y="57" text-anchor="middle" style="font:700 18px var(--font-mono); fill:var(--color-text)">2</text>
+        <circle cx="340" cy="50" r="26" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-accent); stroke-width:3"/>
+        <text x="340" y="57" text-anchor="middle" style="font:700 18px var(--font-mono); fill:var(--color-accent)">3</text>
+        <circle cx="490" cy="50" r="26" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-text-muted); stroke-width:2"/>
+        <text x="490" y="57" text-anchor="middle" style="font:700 18px var(--font-mono); fill:var(--color-text)">4</text>
+        <circle cx="640" cy="50" r="26" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-text-muted); stroke-width:2"/>
+        <text x="640" y="57" text-anchor="middle" style="font:700 18px var(--font-mono); fill:var(--color-text)">5</text>
+
+        <circle cx="380" cy="200" r="26" style="fill:var(--color-accent); stroke:var(--color-accent); stroke-width:2"/>
+        <text x="380" y="207" text-anchor="middle" style="font:700 16px var(--font-mono); fill:var(--color-accent-contrast)">3'</text>
+        <circle cx="490" cy="200" r="26" style="fill:var(--color-accent); stroke:var(--color-accent); stroke-width:2"/>
+        <text x="490" y="207" text-anchor="middle" style="font:700 16px var(--font-mono); fill:var(--color-accent-contrast)">4'</text>
+        <circle cx="640" cy="200" r="26" style="fill:var(--color-accent); stroke:var(--color-accent); stroke-width:2"/>
+        <text x="640" y="207" text-anchor="middle" style="font:700 16px var(--font-mono); fill:var(--color-accent-contrast)">5'</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- Journey -->
+  <section id="journey">
+    <p class="kicker">Using the app</p>
+    <h2>What it feels like to use, start to finish</h2>
+    <div class="grid grid-4">
+      <div class="card"><span class="step-num">01</span><h3>Type in what you have</h3><p>List your ingredients and, optionally, a cuisine, a time limit, servings, or a diet to respect.</p></div>
+      <div class="card"><span class="step-num">02</span><h3>Watch it think, one stage at a time</h3><p>The agent pauses after every stage. Step through manually, or let "Auto-run" click through for you.</p></div>
+      <div class="card"><span class="step-num">03</span><h3>Inspect, edit, or fork any step</h3><p>Disagree with a direction the agent chose? Edit that step and replay from there as a new branch.</p></div>
+      <div class="card"><span class="step-num">04</span><h3>Cook from the finished recipe</h3><p>Scaled to your servings, with steps, timing, and an approximate nutrition estimate.</p></div>
+    </div>
+    <div class="callout">
+      <h3>No accounts, no login</h3>
+      <p>A random ID stored in your browser is the only "credential." Sessions are private to your device — nothing is shareable across devices or people, and nothing ever appears in the page's URL.</p>
+    </div>
+  </section>
+
+  <!-- Divider -->
+  <section id="under-the-hood" style="background:var(--color-text); color:var(--color-bg); margin: 0 calc(-1 * var(--space-4)); padding: var(--space-8) var(--space-4);">
+    <p class="kicker" style="color:var(--color-accent);">Part two</p>
+    <h2 style="color:var(--color-bg);">Under the hood</h2>
+    <p class="lede" style="color:var(--color-text-muted);">The same app, from an engineer's chair: the stack, the agent graph, how state is validated, and how a run's whole history is stored and rebuilt.</p>
+  </section>
+
+  <!-- Architecture -->
+  <section id="architecture">
+    <p class="kicker">Architecture</p>
+    <h2>Six steps, browser to graph and back</h2>
+    <div class="grid grid-3">
+      <div class="card"><span class="badge badge-edge" style="margin-bottom:var(--space-2);">1 · BROWSER</span><h3>Type</h3><p class="mono" style="display:block; margin:var(--space-2) 0;">onChange → setRaw(value)</p><p>Every keystroke updates the <code>raw</code> string via React state. Nothing else happens yet.</p></div>
+      <div class="card"><span class="badge badge-edge" style="margin-bottom:var(--space-2);">2 · BROWSER</span><h3>Clean up</h3><p class="mono" style="display:block; margin:var(--space-2) 0;">split → trim → filter</p><p>Plain JS, not Zod. <code>raw</code> is consumed here — <code>ingredients</code> is what moves on.</p></div>
+      <div class="card" style="border-color:var(--color-accent);"><span class="badge badge-node" style="margin-bottom:var(--space-2);">3 · BROWSER → NETWORK</span><h3>fetch()</h3><p class="mono" style="display:block; margin:var(--space-2) 0;">POST /api/…/start</p><p>The one real network hop — a genuine HTTP POST leaves the browser.</p></div>
+      <div class="card" style="border: 2px solid var(--color-accent);"><span class="badge badge-node" style="margin-bottom:var(--space-2);">4 · SERVER</span><h3 style="color:var(--color-accent);">Validate</h3><p class="mono" style="display:block; margin:var(--space-2) 0;">RequestSchema.safeParse(…)</p><p style="color:var(--color-accent); font-weight:600;">✓ the actual gate — Zod's first check. Fails → 400, stops here.</p></div>
+      <div class="card"><span class="badge badge-edge" style="margin-bottom:var(--space-2);">5 · SERVER</span><h3>Invoke</h3><p class="mono" style="display:block; margin:var(--space-2) 0;">graph.invoke(seed, config)</p><p>Same process, no network. Runs exactly <strong>one</strong> node — <code>interruptAfter</code> is set on all seven.</p></div>
+      <div class="card" style="border-color:var(--color-accent);"><span class="badge badge-node" style="margin-bottom:var(--space-2);">6 · SERVER → NETWORK</span><h3>Respond</h3><p class="mono" style="display:block; margin:var(--space-2) 0;">NextResponse.json({ state, next })</p><p>Travels back over the same <code>fetch()</code> call — its promise resolves with this.</p></div>
+    </div>
+    <p class="body-text" style="margin-top:var(--space-4); font-style:italic;">Loops back to the browser, always — never a server-side loop. <strong>Step</strong> waits for a click; <strong>Auto-run</strong> is the browser's own loop firing the next <code>fetch()</code> immediately, one full trip per node.</p>
+    <p class="body-text" style="margin-top:var(--space-3);">Only two hops ever leave a process: step 3 (browser → server) and step 6 (server → browser). Everything else — the clean-up in step 2, the validation in step 4, the graph call in step 5 — runs as a plain function call, no network involved. The node that step 5 runs makes its own call to OpenRouter, Zod-checked the same way as step 4 — see the next section for model routing.</p>
+  </section>
+
+  <!-- Agent graph -->
+  <section id="agent-graph">
+    <p class="kicker">The agent graph</p>
+    <h2>Nodes do the work, edges decide where the state goes next</h2>
+    <p class="body-text">A graph view of the agentic process itself — step 5 (<strong>Invoke</strong>) from the architecture section, unpacked. Every dashed arrow is its own six-step round trip, not a direct call.</p>
+
+    <div class="diagram-responsive" style="margin-top:var(--space-5);">
+      <svg viewBox="0 0 950 230" role="img" aria-label="Seven agent nodes — parseIngredients, proposeDirections, selectDirection, draftRecipe, critique, refine, finalize — connected by two conditional edges (usable?, blocking and budget?) that route to an error End, a refine loop, or the main End.">
+        <defs>
+          <marker id="g-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill:var(--color-text-muted)"/></marker>
+          <marker id="g-arrow-danger" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill:var(--color-danger)"/></marker>
+        </defs>
+
+        <!-- main-row connectors -->
+        <line x1="84" y1="70" x2="133" y2="70" style="stroke:var(--color-text-muted); stroke-width:2" marker-end="url(#g-arrow)"/>
+        <line x1="167" y1="70" x2="226" y2="70" style="stroke:var(--color-text-muted); stroke-width:2; stroke-dasharray:4,4" marker-end="url(#g-arrow)"/>
+        <line x1="294" y1="70" x2="336" y2="70" style="stroke:var(--color-text-muted); stroke-width:2; stroke-dasharray:4,4" marker-end="url(#g-arrow)"/>
+        <line x1="404" y1="70" x2="446" y2="70" style="stroke:var(--color-text-muted); stroke-width:2; stroke-dasharray:4,4" marker-end="url(#g-arrow)"/>
+        <line x1="514" y1="70" x2="556" y2="70" style="stroke:var(--color-text-muted); stroke-width:2; stroke-dasharray:4,4" marker-end="url(#g-arrow)"/>
+        <line x1="624" y1="70" x2="673" y2="70" style="stroke:var(--color-text-muted); stroke-width:2" marker-end="url(#g-arrow)"/>
+        <line x1="707" y1="70" x2="766" y2="70" style="stroke:var(--color-text-muted); stroke-width:2; stroke-dasharray:4,4" marker-end="url(#g-arrow)"/>
+        <line x1="834" y1="70" x2="870" y2="70" style="stroke:var(--color-text-muted); stroke-width:2; stroke-dasharray:4,4" marker-end="url(#g-arrow)"/>
+
+        <!-- error branch: usable? -> error End -->
+        <line x1="150" y1="87" x2="150" y2="155" style="stroke:var(--color-danger); stroke-width:2; stroke-dasharray:4,4" marker-end="url(#g-arrow-danger)"/>
+        <!-- blocking? -> refine, and refine loops back to critique. The
+             return line is drawn along the exact vector between the two
+             node centers (then trimmed to each circle's edge), so the
+             arrowhead lands pointed straight at critique's center. -->
+        <line x1="683" y1="86" x2="640" y2="138" style="stroke:var(--color-danger); stroke-width:2; stroke-dasharray:4,4" marker-end="url(#g-arrow-danger)"/>
+        <line x1="617" y1="138" x2="603" y2="102" style="stroke:var(--color-danger); stroke-width:2; stroke-dasharray:4,4" marker-end="url(#g-arrow-danger)"/>
+
+        <!-- nodes: main row -->
+        <circle cx="50" cy="70" r="34" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-accent); stroke-width:2"/>
+        <text x="50" y="66" text-anchor="middle" style="font:700 10px var(--font-mono); fill:var(--color-text)">parse</text>
+        <text x="50" y="78" text-anchor="middle" style="font:700 10px var(--font-mono); fill:var(--color-text)">Ingredients</text>
+
+        <polygon points="150,53 167,70 150,87 133,70" style="fill:color-mix(in srgb, var(--color-warning) 20%, var(--color-surface)); stroke:var(--color-warning); stroke-width:2"/>
+        <text x="150" y="112" text-anchor="middle" style="font:700 10px var(--font-sans); fill:var(--color-warning)">usable?</text>
+
+        <circle cx="260" cy="70" r="34" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-accent); stroke-width:2"/>
+        <text x="260" y="66" text-anchor="middle" style="font:700 10px var(--font-mono); fill:var(--color-text)">propose</text>
+        <text x="260" y="78" text-anchor="middle" style="font:700 10px var(--font-mono); fill:var(--color-text)">Directions</text>
+
+        <circle cx="370" cy="70" r="34" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-accent); stroke-width:2"/>
+        <text x="370" y="66" text-anchor="middle" style="font:700 10px var(--font-mono); fill:var(--color-text)">select</text>
+        <text x="370" y="78" text-anchor="middle" style="font:700 10px var(--font-mono); fill:var(--color-text)">Direction</text>
+
+        <circle cx="480" cy="70" r="34" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-accent); stroke-width:2"/>
+        <text x="480" y="66" text-anchor="middle" style="font:700 10px var(--font-mono); fill:var(--color-text)">draft</text>
+        <text x="480" y="78" text-anchor="middle" style="font:700 10px var(--font-mono); fill:var(--color-text)">Recipe</text>
+
+        <circle cx="590" cy="70" r="34" style="fill:color-mix(in srgb, var(--color-danger) 10%, var(--color-surface)); stroke:var(--color-danger); stroke-width:2"/>
+        <text x="590" y="74" text-anchor="middle" style="font:700 11px var(--font-mono); fill:var(--color-text)">critique</text>
+
+        <polygon points="690,53 707,70 690,87 673,70" style="fill:color-mix(in srgb, var(--color-warning) 20%, var(--color-surface)); stroke:var(--color-warning); stroke-width:2"/>
+        <text x="690" y="112" text-anchor="middle" style="font:700 10px var(--font-sans); fill:var(--color-warning)">blocking &amp; budget?</text>
+
+        <circle cx="800" cy="70" r="34" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-accent); stroke-width:2"/>
+        <text x="800" y="74" text-anchor="middle" style="font:700 11px var(--font-mono); fill:var(--color-text)">finalize</text>
+
+        <rect x="870" y="55" width="60" height="30" rx="15" style="fill:var(--color-text)"/>
+        <text x="900" y="75" text-anchor="middle" style="font:600 12px var(--font-sans); fill:var(--color-bg)">End</text>
+
+        <!-- second row -->
+        <circle cx="630" cy="170" r="34" style="fill:color-mix(in srgb, var(--color-danger) 10%, var(--color-surface)); stroke:var(--color-danger); stroke-width:2"/>
+        <text x="630" y="174" text-anchor="middle" style="font:700 11px var(--font-mono); fill:var(--color-text)">refine</text>
+
+        <rect x="120" y="155" width="60" height="30" rx="15" style="fill:var(--color-danger)"/>
+        <text x="150" y="175" text-anchor="middle" style="font:600 12px var(--font-sans); fill:#fff">End</text>
+      </svg>
+    </div>
+    <p class="legend">— solid: same request, no round trip (a node evaluating its own edge) <span class="dashed"></span> dashed: a new request — <code>graph.invoke()</code> already stopped, Step/Auto-run resumes it</p>
+    <table>
+      <thead><tr><th>Edge</th><th>Means</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">usable?</td><td>None of the parsed ingredients was marked not-food, unintelligible, or a duplicate.</td></tr>
+        <tr><td class="mono">blocking &amp; budget?</td><td><strong>blocking</strong> — critique's model judged a real feasibility/flavor problem, not just style. <strong>budget</strong> — <code>refineCount</code> is still under <code>MAX_REFINE_CYCLES</code> (2 by default). Both must hold for the run to loop back to <code>refine</code>.</td></tr>
+      </tbody>
+    </table>
+    <p class="body-text" style="margin-top:var(--space-4);">Circles are <strong>nodes</strong>; diamonds are <strong>edges</strong> — a plain function (<code>lib/agent/edges.ts</code>) that reads the current state and decides which node runs next. <code>selectDirection</code> sits behind a plain, unconditional edge — it judges which of <code>proposeDirections</code>'s 2–3 candidate directions to draft from, but never changes which node runs next, so it's a node, not a diamond.</p>
+  </section>
+
+  <!-- Prompts & model routing -->
+  <section id="prompts">
+    <p class="kicker">Prompts &amp; model routing</p>
+    <h2>What each stage asks a model to do</h2>
+    <table>
+      <thead><tr><th>Stage</th><th>Model</th><th>Asks the model to…</th><th>Routes to</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">parseIngredients</td><td>fast</td><td>Classify each line: usable, staple, normalized</td><td>ingredientError or proposeDirections</td></tr>
+        <tr><td class="mono">proposeDirections</td><td>fast</td><td>Propose 2–3 distinct dish directions</td><td>selectDirection</td></tr>
+        <tr><td class="mono">selectDirection</td><td>fast</td><td>Judge the candidates; report the chosen index + why (or an honest "no clear favorite, defaulted")</td><td>draftRecipe</td></tr>
+        <tr><td class="mono">draftRecipe</td><td>fast</td><td>Write a full draft — steps, timing, toBuy list</td><td>critique</td></tr>
+        <tr class="accent-row"><td class="mono">critique</td><td>stronger</td><td>Judge feasibility &amp; balance; set blocking true/false</td><td>refine or finalize</td></tr>
+        <tr><td class="mono">refine</td><td>fast</td><td>Revise the draft to address the critique</td><td>critique</td></tr>
+        <tr><td class="mono">finalize</td><td>fast</td><td>Scale servings, polish wording, estimate nutrition</td><td>end</td></tr>
+      </tbody>
+    </table>
+    <p class="body-text" style="margin-top:var(--space-4);">Every reply is requested through <code>withStructuredOutput</code> against a Zod schema — a model's answer is validated shape before anything trusts it. <code>MODEL_DEFAULT</code> and <code>MODEL_CRITIQUE</code> are OpenRouter model IDs read only in <code>lib/agent/models.ts</code> — swapping models is an env-var change, never a code change.</p>
+  </section>
+
+  <!-- State, validation & persistence -->
+  <section id="state">
+    <p class="kicker">State, validation &amp; persistence</p>
+    <h2>One state object, replaced whole, checkpointed in Postgres</h2>
+    <p class="body-text">One shared state object — not per-node variables — flows node to node. Its shape is <strong>GraphState</strong> (<code>Annotation.Root</code> in <code>lib/agent/graph.ts</code>): one last-value-wins channel per field, replaced whole on every update, never merged.</p>
+    <p class="body-text">Zod (<code>StateSchema</code>, <code>lib/agent/state.ts</code>) isn't an automatic guard on every transition. It validates exactly two moments a node's own code checks: a model's structured output the instant it returns, and a person's <code>/fork</code> edit patch — before either is trusted to overwrite a channel.</p>
+
+    <div class="card" style="margin-top:var(--space-4);">
+      <h3 style="margin-bottom:var(--space-3);">The ten state channels</h3>
+      <div class="grid grid-2">
+        <ul class="plain">
+          <li>ingredients</li><li>constraints</li><li>directions</li><li>directionSelection</li><li>recipeDraft</li>
+        </ul>
+        <ul class="plain">
+          <li>critiques</li><li>finalRecipe</li><li>refineCount</li><li>outcome</li><li>failureReason</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="diagram-responsive" style="margin-top:var(--space-5); max-width:600px;">
+      <svg viewBox="0 0 640 270" role="img" aria-label="GraphState schema defines the shape of a single State object, which is written to Postgres via PostgresSaver after every node and read back on the next request. Two Zod gates — on a model's structured output and on a /fork edit patch — check any new value before it reaches the state object.">
+        <defs>
+          <marker id="st-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill:var(--color-text-muted)"/></marker>
+          <marker id="st-arrow-warn" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill:var(--color-warning)"/></marker>
+        </defs>
+
+        <!-- schema defines state: connector kept short and low, label placed
+             above it in the clear strip between the two boxes' tops, so
+             neither the line nor either box crosses the text. -->
+        <line x1="182" y1="130" x2="248" y2="118" style="stroke:var(--color-text-muted); stroke-width:2" marker-end="url(#st-arrow)"/>
+        <text x="188" y="106" style="font:italic 10px var(--font-sans); fill:var(--color-text-muted)">defines shape</text>
+
+        <!-- inputs through Zod gates into state object -->
+        <line x1="238" y1="40" x2="298" y2="58" style="stroke:var(--color-warning); stroke-width:2" marker-end="url(#st-arrow-warn)"/>
+        <line x1="300" y1="82" x2="270" y2="100" style="stroke:var(--color-warning); stroke-width:2" marker-end="url(#st-arrow-warn)"/>
+        <line x1="500" y1="40" x2="420" y2="58" style="stroke:var(--color-warning); stroke-width:2" marker-end="url(#st-arrow-warn)"/>
+        <line x1="418" y1="82" x2="410" y2="100" style="stroke:var(--color-warning); stroke-width:2" marker-end="url(#st-arrow-warn)"/>
+        <text x="335" y="100" text-anchor="middle" style="font:italic 9.5px var(--font-sans); fill:var(--color-warning)">passes, or the run enters stage-failure</text>
+
+        <!-- state <-> postgres: label moved clear of the boxes, to the right
+             of both vertical connectors, fully inside the gap between the
+             two boxes so it never touches either one. -->
+        <line x1="300" y1="170" x2="300" y2="200" style="stroke:var(--color-text-muted); stroke-width:2" marker-end="url(#st-arrow)"/>
+        <line x1="370" y1="200" x2="370" y2="170" style="stroke:var(--color-text-muted); stroke-width:2" marker-end="url(#st-arrow)"/>
+        <text x="430" y="180" style="font:10px var(--font-sans); fill:var(--color-text-muted)">checkpoints after every node ·</text>
+        <text x="430" y="194" style="font:10px var(--font-sans); fill:var(--color-text-muted)">resumes on the next request</text>
+
+        <!-- GraphState schema box -->
+        <rect x="10" y="95" width="170" height="70" rx="10" style="fill:var(--color-surface); stroke:var(--color-border); stroke-width:1"/>
+        <text x="95" y="126" text-anchor="middle" style="font:600 13px var(--font-sans); fill:var(--color-text)">GraphState schema</text>
+        <text x="95" y="144" text-anchor="middle" style="font:9.5px var(--font-mono); fill:var(--color-text-muted)">lib/agent/graph.ts</text>
+
+        <!-- State object box -->
+        <rect x="250" y="55" width="170" height="110" rx="14" style="fill:color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); stroke:var(--color-accent); stroke-width:3"/>
+        <text x="335" y="105" text-anchor="middle" style="font:700 16px var(--font-sans); fill:var(--color-accent)">State object</text>
+        <text x="335" y="124" text-anchor="middle" style="font:10px var(--font-sans); fill:var(--color-text-muted)">10 channels</text>
+        <text x="335" y="138" text-anchor="middle" style="font:10px var(--font-sans); fill:var(--color-text-muted)">last-value-wins</text>
+
+        <!-- inputs -->
+        <rect x="165" y="0" width="140" height="40" rx="8" style="fill:var(--color-surface); stroke:var(--color-border); stroke-width:1"/>
+        <text x="235" y="18" text-anchor="middle" style="font:10px var(--font-sans); fill:var(--color-text)">Model structured</text>
+        <text x="235" y="31" text-anchor="middle" style="font:10px var(--font-sans); fill:var(--color-text)">output</text>
+
+        <rect x="430" y="0" width="140" height="40" rx="8" style="fill:var(--color-surface); stroke:var(--color-border); stroke-width:1"/>
+        <text x="500" y="24" text-anchor="middle" style="font:10px var(--font-sans); fill:var(--color-text)">/fork edit patch</text>
+
+        <!-- Zod gates -->
+        <polygon points="315,52 335,72 315,92 295,72" style="fill:color-mix(in srgb, var(--color-warning) 20%, var(--color-surface)); stroke:var(--color-warning); stroke-width:2"/>
+        <text x="315" y="76" text-anchor="middle" style="font:700 9px var(--font-mono); fill:var(--color-warning)">ZOD</text>
+        <polygon points="405,52 425,72 405,92 385,72" style="fill:color-mix(in srgb, var(--color-warning) 20%, var(--color-surface)); stroke:var(--color-warning); stroke-width:2"/>
+        <text x="405" y="76" text-anchor="middle" style="font:700 9px var(--font-mono); fill:var(--color-warning)">ZOD</text>
+
+        <!-- Postgres box -->
+        <rect x="250" y="200" width="170" height="60" rx="12" style="fill:var(--color-text)"/>
+        <text x="335" y="226" text-anchor="middle" style="font:600 13px var(--font-sans); fill:var(--color-bg)">Postgres (Neon)</text>
+        <text x="335" y="244" text-anchor="middle" style="font:9.5px var(--font-mono); fill:var(--color-bg); opacity:0.7">via PostgresSaver</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- Branching -->
+  <section id="branching">
+    <p class="kicker">Branching mechanics</p>
+    <h2>A fork never edits history — it replays a new one</h2>
+    <p class="body-text">Forking never writes a second, divergent continuation onto an already-used step in the same thread — that's the operation confirmed to lose data. Instead, <code>lib/fork-replay.ts</code> does this, in order:</p>
+    <div class="grid grid-4">
+      <div class="card"><span class="step-num">1</span><p>Read the source branch's full checkpoint history, oldest first, up to the checkpoint being forked from.</p></div>
+      <div class="card"><span class="step-num">2</span><p>Seed a brand-new LangGraph thread, and replay every prior stage's recorded output onto it, exactly as it happened.</p></div>
+      <div class="card"><span class="step-num">3</span><p>Apply the user's patch as the final replayed step — attributed to the stage that originally produced it.</p></div>
+      <div class="card"><span class="step-num">4</span><p>Record the new thread as a branch of the old one in a small <code>branches</code> table, and return its fresh tip.</p></div>
+    </div>
+    <div class="grid grid-2">
+      <div class="callout"><h3>One thread per branch</h3><p>Every branch — the original run and every fork of it — is its own LangGraph <code>thread_id</code>. A session can hold many.</p></div>
+      <div class="callout"><h3>Fork vs. retry</h3><p>A <strong>retry</strong> is a plain re-run on the same thread — confirmed safe. Only editing-and-continuing seeds a new one.</p></div>
+    </div>
+  </section>
+
+  <!-- Data model -->
+  <section id="data-model">
+    <p class="kicker">Data model</p>
+    <h2>Three small tables that track sessions, branch lineage, and usage limits</h2>
+    <div class="grid grid-3">
+      <div class="card">
+        <h3 style="color:var(--color-accent);">sessions</h3>
+        <ul class="plain" style="margin: var(--space-2) 0;"><li>session_id, client_id</li><li>root_thread_id, title</li><li>stage_count, status</li></ul>
+        <p>One row per app-level session — not a LangGraph thread.</p>
+      </div>
+      <div class="card">
+        <h3 style="color:var(--color-accent);">branches</h3>
+        <ul class="plain" style="margin: var(--space-2) 0;"><li>thread_id, session_id</li><li>parent_thread_id</li><li>forked_from_checkpoint_id</li></ul>
+        <p>One row per branch — links it to its parent and fork point.</p>
+      </div>
+      <div class="card">
+        <h3 style="color:var(--color-accent);">usage_events</h3>
+        <ul class="plain" style="margin: var(--space-2) 0;"><li>client_id, thread_id</li><li>kind, created_at</li><li>start | stage | rejected-limit</li></ul>
+        <p>Backs the rate limits and daily/global caps.</p>
+      </div>
+    </div>
+    <div class="callout">
+      <h3>How the browsable tree gets rebuilt</h3>
+      <p>Neither piece alone is the tree. Each branch's own checkpoint chain (from LangGraph's checkpointer) gives a plain, unbroken line from its start to wherever it ends; the <strong style="color:inherit;">branches</strong> table records which branch forked from which checkpoint of which other branch. Combining the two produces the full, browsable history a person sees in the app.</p>
+    </div>
+  </section>
+
+  <!-- Repo -->
+  <section id="repo">
+    <p class="kicker">Repository structure</p>
+    <div style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:var(--space-2);">
+      <h2 style="margin-bottom:0;">Where to look, mapped to what it's responsible for</h2>
+      <a href="https://github.com/jf8peas/recipe-agent" target="_blank" rel="noopener noreferrer" class="mono" style="font-size:var(--text-sm); color:var(--color-accent); font-weight:600; text-decoration:none;">github.com/jf8peas/recipe-agent →</a>
+    </div>
+    <div class="grid grid-2" style="margin-top:var(--space-4);">
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-base);">app/api/recipe/</h3><p>Route handlers a browser talks to — start, step, commit, fork, history, delete.</p></div>
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-base);">lib/fork-replay.ts</h3><p>The replay-and-patch algorithm that seeds a fork's new thread.</p></div>
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-base);">lib/agent/nodes/</h3><p>One file per graph stage — parseIngredients through finalize.</p></div>
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-base);">lib/db/</h3><p>The pooled connection, schema, and migrations as a sequence of applied changes.</p></div>
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-base);">lib/agent/state.ts / graph.ts</h3><p>The Zod-validated state shape, and the graph that wires stages to it.</p></div>
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-base);">components/</h3><p>Everything on screen — entry form, timeline, state panels, this page.</p></div>
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-base);">lib/agent/models.ts / prompts.ts</h3><p>Where model IDs resolve, and every stage's exact prompt template.</p></div>
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-base);">specs/</h3><p>The living spec, plan, and research docs — the authoritative source this page was built from.</p></div>
+    </div>
+    <p class="body-text" style="margin-top:var(--space-4); font-size:var(--text-sm);">Governed by <code>.specify/memory/constitution.md</code> — the project's own non-negotiables document, summarized in Engineering principles below.</p>
+  </section>
+
+  <!-- API -->
+  <section id="api">
+    <p class="kicker">API contract &amp; guardrails</p>
+    <h2>No login — just an anonymous ID and honest limits</h2>
+    <div class="grid grid-3">
+      <div class="card"><h3>Every request carries X-Client-Id</h3><p>A random id in <code>localStorage</code> is the only credential. Missing it → 401. A session id belonging to someone else's client → 404, never 403 — ownership never leaks which sessions exist.</p></div>
+      <div class="card"><h3>A stage failure isn't an HTTP error</h3><p>A failed stage comes back as <strong>200</strong> with a stage-failure entry in the timeline, so the client can render it in the tree and offer a retry.</p></div>
+      <div class="card"><h3>Four kinds of limit, one status code</h3><p>rate-limited, daily-cap, global-cap, session-cap — each returns <strong>429</strong>, and no checkpoint is ever written for a rejected request.</p></div>
+    </div>
+    <div class="callout">
+      <h3>The routes, at a glance</h3>
+      <div class="grid grid-3" style="margin-top:var(--space-3);">
+        <ul class="plain" style="color:inherit;"><li style="color:inherit; opacity:0.85;">POST /start</li><li style="color:inherit; opacity:0.85;">POST /:sid/step</li><li style="color:inherit; opacity:0.85;">POST /:sid/step/commit</li></ul>
+        <ul class="plain"><li style="color:inherit; opacity:0.85;">POST /:sid/fork</li><li style="color:inherit; opacity:0.85;">GET /:sid/history</li><li style="color:inherit; opacity:0.85;">GET /:sid/state</li></ul>
+        <ul class="plain"><li style="color:inherit; opacity:0.85;">DELETE /:sid</li><li style="color:inherit; opacity:0.85;">GET /mine</li><li style="color:inherit; opacity:0.85;">POST /cron/purge</li></ul>
+      </div>
+      <p style="margin-top:var(--space-3); font-size:var(--text-xs);">Every handler: runtime "nodejs", maxDuration 60 — Edge is banned for anything touching Postgres or LangGraph.</p>
+    </div>
+  </section>
+
+  <!-- Principles -->
+  <section id="principles">
+    <p class="kicker">Engineering principles</p>
+    <h2>Six non-negotiables from the project's own constitution</h2>
+    <div class="grid grid-3">
+      <div class="card"><h3 style="color:var(--color-accent);">Stack is fixed</h3><p>Next.js on Vercel, LangGraph.js in Route Handlers, OpenRouter for every model call, Neon + Zod.</p></div>
+      <div class="card"><h3 style="color:var(--color-accent);">Singletons, always</h3><p>One pool, one compiled graph, cached in module scope — never created inside a request handler.</p></div>
+      <div class="card"><h3 style="color:var(--color-accent);">One thread per branch</h3><p>Never a second child of an already-branched checkpoint in one thread — the confirmed data-loss case.</p></div>
+      <div class="card"><h3 style="color:var(--color-accent);">Model IDs, one place</h3><p>Only <code>lib/agent/models.ts</code> resolves a model id. Design tokens live only in <code>app/tokens.css</code>.</p></div>
+      <div class="card"><h3 style="color:var(--color-accent);">One super-step per request</h3><p><code>interruptAfter</code> on every node; Auto-run is a client-side loop of single-step requests, not a server loop.</p></div>
+      <div class="card"><h3 style="color:var(--color-accent);">Device-private, always</h3><p>No login, no session id in a URL, no sharing across devices — by design, not by omission.</p></div>
+    </div>
+  </section>
+
+  <!-- Closing -->
+  <section id="closing" style="border-bottom:none;">
+    <p class="kicker">Where to look next</p>
+    <h2>The specs are the source of truth — this page is a map of them</h2>
+    <div class="grid grid-4">
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-sm);">specs/</h3><p>One numbered folder per feature — functional requirements and user stories.</p></div>
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-sm);">data-model.md</h3><p>Every graph-state channel and app database table.</p></div>
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-sm);">contracts/api.md</h3><p>Every API route's request/response contract.</p></div>
+      <div class="card"><h3 class="mono" style="color:var(--color-accent); font-size:var(--text-sm);">research.md</h3><p>The design decisions behind time-travel, limits, and cancellation.</p></div>
+    </div>
+    <div class="footer-links callout" style="align-items:center;">
+      <p style="font-weight:600; color:inherit; margin:0;">Built by John Fong</p>
+      <a class="btn-pill" href="https://www.linkedin.com/in/john-fong-04b7a120/" target="_blank" rel="noopener noreferrer">View LinkedIn profile →</a>
+    </div>
+  </section>
+
+</main>
+</body>
+</html>
