@@ -21,9 +21,16 @@
  *   process from tripping each other's "already failed once" state.
  * - `"e2e-slow"` — every call sleeps ~2s first, giving Cancel time to fire
  *   before the fake "model" resolves.
+ * - `"e2e-trigger-blocking-critique"` — every `critique` call returns
+ *   `blocking: true`, so the run cycles through `refine` up to
+ *   `MAX_REFINE_CYCLES` before `routeAfterCritique` forces `finalize` —
+ *   `FIXED_CRITIQUE.blocking` is otherwise always `false`, so no other
+ *   fixture can exercise the refine loop deterministically.
  * An ingredient line of exactly `"rock"` (case-insensitive) is classified
  * unusable, to exercise the ingredient-error path.
  */
+
+const BLOCKING_CRITIQUE_SENTINEL = "e2e-trigger-blocking-critique";
 
 const failedOnce = new Set<string>();
 
@@ -107,12 +114,30 @@ function fakeResponseFor(nodeName: string, prompt: string): unknown {
       // default candidate was picked (every existing fixture) and only
       // changes for a test that edits the selection to a different one.
       const directionMatch = prompt.match(/^Dish direction: (.+?) —/m);
-      return { recipeDraft: { ...FIXED_DRAFT, title: directionMatch?.[1] ?? FIXED_DRAFT.title } };
+      return {
+        recipeDraft: {
+          ...FIXED_DRAFT,
+          title: directionMatch?.[1] ?? FIXED_DRAFT.title,
+          // critique's own prompt has no ingredients list to read a
+          // sentinel from — it only sees `recipeDraft` (as JSON) and prior
+          // critiques — so the blocking-critique sentinel is threaded
+          // through `toBuy` here, and preserved by `refine` below, so it
+          // survives into every later critique pass too.
+          toBuy: prompt.includes(BLOCKING_CRITIQUE_SENTINEL) ? [BLOCKING_CRITIQUE_SENTINEL] : FIXED_DRAFT.toBuy,
+        },
+      };
     }
     case "critique":
-      return { critique: FIXED_CRITIQUE };
-    case "refine":
-      return { recipeDraft: FIXED_DRAFT };
+      return {
+        critique: {
+          ...FIXED_CRITIQUE,
+          blocking: prompt.includes(BLOCKING_CRITIQUE_SENTINEL) ? true : FIXED_CRITIQUE.blocking,
+        },
+      };
+    case "refine": {
+      const carriesSentinel = prompt.includes(BLOCKING_CRITIQUE_SENTINEL);
+      return { recipeDraft: { ...FIXED_DRAFT, toBuy: carriesSentinel ? [BLOCKING_CRITIQUE_SENTINEL] : FIXED_DRAFT.toBuy } };
+    }
     case "finalize":
       return { finalRecipe: FIXED_FINAL_RECIPE };
     default:

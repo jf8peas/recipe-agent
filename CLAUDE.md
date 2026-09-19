@@ -5,16 +5,16 @@ recipe, with full time-travel (inspect / branch / edit / replay) over the graph'
 state history.
 
 <!-- SPECKIT START -->
-Active plan: [specs/004-about-page-redesign/plan.md](specs/004-about-page-redesign/plan.md)
+Active plan: [specs/005-agent-graph-progress/plan.md](specs/005-agent-graph-progress/plan.md) (implemented)
 
-- Spec: [specs/004-about-page-redesign/spec.md](specs/004-about-page-redesign/spec.md)
-- Research: [specs/004-about-page-redesign/research.md](specs/004-about-page-redesign/research.md)
-- Data model: [specs/004-about-page-redesign/data-model.md](specs/004-about-page-redesign/data-model.md)
-- UI contract: [specs/004-about-page-redesign/contracts/about-page-ui.md](specs/004-about-page-redesign/contracts/about-page-ui.md)
-- Quickstart: [specs/004-about-page-redesign/quickstart.md](specs/004-about-page-redesign/quickstart.md)
+- Spec: [specs/005-agent-graph-progress/spec.md](specs/005-agent-graph-progress/spec.md)
+- Research: [specs/005-agent-graph-progress/research.md](specs/005-agent-graph-progress/research.md)
+- Data model: [specs/005-agent-graph-progress/data-model.md](specs/005-agent-graph-progress/data-model.md)
+- UI contract: [specs/005-agent-graph-progress/contracts/agent-graph-progress-ui.md](specs/005-agent-graph-progress/contracts/agent-graph-progress-ui.md)
+- Quickstart: [specs/005-agent-graph-progress/quickstart.md](specs/005-agent-graph-progress/quickstart.md)
 - Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v3.0.0)
 
-Prior features (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md), [specs/003-direction-selection/plan.md](specs/003-direction-selection/plan.md). Feature 002 ("About This App" slideshow) has been fully replaced by feature 004 — see spec 004 FR-001.
+Prior features (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md), [specs/003-direction-selection/plan.md](specs/003-direction-selection/plan.md), [specs/004-about-page-redesign/plan.md](specs/004-about-page-redesign/plan.md). Feature 002 ("About This App" slideshow) has been fully replaced by feature 004 — see spec 004 FR-001.
 <!-- SPECKIT END -->
 
 ## Non-negotiables (from the constitution)
@@ -63,6 +63,10 @@ Features 001 (Recipe Agent core), 003 (direction selection stage), and 004
 single full-scrolling reference page with a sticky topic nav, matching
 `design/v002/about.html` — `components/AboutSlideshow.tsx` and its 5-slide
 content model are deleted; `components/about/` and a rewritten
-`lib/about-content.ts` replace them. Local work (features 001, 003, 004) is
-verified (`tsc`/`vitest`/`build`/`playwright` all green) but not yet
+`lib/about-content.ts` replace them. Feature 005 (agent graph progress diagram, replacing `components/
+StageProgress.tsx`'s flat stepper with a diagram of the real 8-node graph
+topology and one run's actual path through it) is implemented —
+`lib/graph-progress.ts` (the pure derivation) and `components/
+AgentGraphProgress.tsx` replace it. Local work (features 001, 003, 004,
+005) is verified (`tsc`/`vitest`/`build`/`playwright` all green) but not yet
 deployed to Vercel.

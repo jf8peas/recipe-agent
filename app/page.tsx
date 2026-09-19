@@ -9,7 +9,7 @@ import { useAdvanceLock } from "@/hooks/useAdvanceLock";
 import { usePauseBetweenStages } from "@/hooks/usePauseBetweenStages";
 import { EntryForm } from "@/components/EntryForm";
 import { SessionList } from "@/components/SessionList";
-import { StageProgress } from "@/components/StageProgress";
+import { AgentGraphProgress } from "@/components/AgentGraphProgress";
 import { StatePanel } from "@/components/StatePanel";
 import { ActionToolbar } from "@/components/ActionToolbar";
 import { RunningStage } from "@/components/RunningStage";
@@ -275,7 +275,13 @@ export default function HomePage() {
             </p>
           )}
 
-          <StageProgress next={displayedNext} outcome={displayedState?.outcome ?? snapshot.state.outcome} />
+          <AgentGraphProgress
+            timeline={history?.timeline ?? []}
+            branchId={(viewed ?? snapshot).branchId}
+            next={displayedNext}
+            outcome={displayedState?.outcome ?? snapshot.state.outcome}
+            checkpointId={(viewed ?? snapshot).checkpointId}
+          />
 
           {isViewingHistory && !editMode && (
             <p role="status" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
