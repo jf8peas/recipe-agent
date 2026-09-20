@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useClientId } from "./useClientId";
 import type { State, Constraints } from "@/lib/agent/state";
 import type { TimelineEntry } from "@/lib/tree";
@@ -359,11 +360,20 @@ export function useSession() {
         }
 
         const res = result.json as StepResponse;
-        setSnapshot({ sessionId, ...res });
-        setViewed(null);
-        // Remember this attempt's source so a Retry targets the same
-        // parent again; clear it once a stage actually succeeds.
-        setRetryFromCheckpointId(res.kind === "stage-failure" ? fromCheckpointId : null);
+        // Auto-run's loop (`useAutoRun.play()`) calls `sessionRef.current.step()`
+        // again immediately on this promise resolving, reading whatever
+        // `guardedStep`/`step` closure is current at that instant — a plain
+        // `setSnapshot` here doesn't commit before that next synchronous call,
+        // so it would still see the pre-advance checkpoint and 409 against
+        // itself. `flushSync` forces the re-render (and the ref it feeds)
+        // through before this call returns.
+        flushSync(() => {
+          setSnapshot({ sessionId, ...res });
+          setViewed(null);
+          // Remember this attempt's source so a Retry targets the same
+          // parent again; clear it once a stage actually succeeds.
+          setRetryFromCheckpointId(res.kind === "stage-failure" ? fromCheckpointId : null);
+        });
         void fetchHistory(sessionId);
         return res;
       } finally {
