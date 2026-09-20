@@ -285,14 +285,21 @@ export function AgentGraphSection() {
         direct call.
       </p>
 
-      <div
-        data-testid="agent-graph-scroll"
-        role="group"
-        aria-label="Agent graph diagram (scrollable)"
-        tabIndex={0}
-        style={{ overflowX: "auto" }}
-      >
-        <AgentGraphDiagram />
+      {/* Full-bleed: undoes the page's own horizontal padding just for the
+          diagram, so it gets the whole viewport width to scale into on
+          narrow screens (matching AgentGraphProgress's own treatment in
+          app/page.tsx) instead of losing 2*var(--space-4) to padding a
+          diagram doesn't need the way prose does. */}
+      <div style={{ marginLeft: "calc(-1 * var(--space-4))", marginRight: "calc(-1 * var(--space-4))", padding: "0 var(--space-2)" }}>
+        <div
+          data-testid="agent-graph-scroll"
+          role="group"
+          aria-label="Agent graph diagram (scrollable)"
+          tabIndex={0}
+          style={{ overflowX: "auto" }}
+        >
+          <AgentGraphDiagram />
+        </div>
       </div>
 
       <p style={legendStyle}>
@@ -302,7 +309,11 @@ export function AgentGraphSection() {
         <span style={legendSampleDashed} aria-hidden="true" />
       </p>
 
-      <table style={tableStyle}>
+      <table style={tableStyle} className="about-responsive-table">
+        <colgroup>
+          <col style={{ width: "28%" }} />
+          <col style={{ width: "72%" }} />
+        </colgroup>
         <thead>
           <tr>
             <th style={{ ...tableCellStyle, ...tableHeadStyle }}>Edge</th>
@@ -312,8 +323,12 @@ export function AgentGraphSection() {
         <tbody>
           {AGENT_GRAPH_EDGES.map((edge) => (
             <tr key={edge.condition}>
-              <td style={{ ...tableCellStyle, ...monoCellStyle }}>{edge.condition}</td>
-              <td style={tableCellStyle}>{edge.explanation}</td>
+              <td data-label="Edge" style={{ ...tableCellStyle, ...monoCellStyle }}>
+                {edge.condition}
+              </td>
+              <td data-label="Means" style={tableCellStyle}>
+                {edge.explanation}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -331,7 +346,13 @@ export function PromptsSection() {
     <section id="prompts" tabIndex={-1} style={sectionStyle}>
       <p style={kickerStyle}>Prompts &amp; model routing</p>
       <h2 style={h2Style}>What each stage asks a model to do</h2>
-      <table style={tableStyle}>
+      <table style={tableStyle} className="about-responsive-table">
+        <colgroup>
+          <col style={{ width: "27%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "35%" }} />
+          <col style={{ width: "26%" }} />
+        </colgroup>
         <thead>
           <tr>
             <th style={{ ...tableCellStyle, ...tableHeadStyle }}>Stage</th>
@@ -343,16 +364,19 @@ export function PromptsSection() {
         <tbody>
           {PROMPT_ROUTING_TABLE.map((row) => (
             <tr key={row.stage}>
-              <td style={row.model === "stronger" ? { ...tableCellStyle, ...accentRowCellStyle, ...monoCellStyle } : { ...tableCellStyle, ...monoCellStyle }}>
+              <td
+                data-label="Stage"
+                style={row.model === "stronger" ? { ...tableCellStyle, ...accentRowCellStyle, ...monoCellStyle } : { ...tableCellStyle, ...monoCellStyle }}
+              >
                 {row.stage}
               </td>
-              <td style={row.model === "stronger" ? { ...tableCellStyle, ...accentRowCellStyle } : tableCellStyle}>
+              <td data-label="Model" style={row.model === "stronger" ? { ...tableCellStyle, ...accentRowCellStyle } : tableCellStyle}>
                 {row.model}
               </td>
-              <td style={row.model === "stronger" ? { ...tableCellStyle, ...accentRowCellStyle } : tableCellStyle}>
+              <td data-label="Asks the model to…" style={row.model === "stronger" ? { ...tableCellStyle, ...accentRowCellStyle } : tableCellStyle}>
                 {row.asks}
               </td>
-              <td style={row.model === "stronger" ? { ...tableCellStyle, ...accentRowCellStyle } : tableCellStyle}>
+              <td data-label="Routes to" style={row.model === "stronger" ? { ...tableCellStyle, ...accentRowCellStyle } : tableCellStyle}>
                 {row.routesTo}
               </td>
             </tr>

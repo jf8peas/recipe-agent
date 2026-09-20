@@ -67,6 +67,13 @@ export function badgeStyle(kind: BadgeKind): CSSProperties {
 
 export const tableStyle: CSSProperties = {
   width: "100%",
+  // Without this, `width: 100%` is only a suggestion — a column holding an
+  // unbreakable long identifier (e.g. "proposeDirections") can still force
+  // the whole table wider than its container, since plain `auto` table
+  // layout sizes columns from content first. `fixed` makes column widths
+  // (set below, per table, via each header cell's own `width`) authoritative
+  // instead, so content wraps to fit rather than growing the table.
+  tableLayout: "fixed",
   borderCollapse: "collapse",
   border: "1px solid var(--color-border)",
   borderRadius: "var(--radius-md)",
@@ -80,6 +87,12 @@ export const tableCellStyle: CSSProperties = {
   padding: "var(--space-2) var(--space-3)",
   borderBottom: "1px solid var(--color-border)",
   verticalAlign: "top",
+  // A camelCase stage name or identifier has no natural break point —
+  // without this it's exactly the kind of unbreakable content `fixed`
+  // table layout still can't wrap, and the column (so the whole table)
+  // overflows anyway.
+  overflowWrap: "break-word",
+  wordBreak: "break-word",
 };
 
 export const tableHeadStyle: CSSProperties = {

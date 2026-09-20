@@ -93,7 +93,9 @@ test("US2: topic nav activation moves focus and announces, and stays keyboard re
   await expect(aboutButton).toBeFocused();
 });
 
-test("US3: renders from 320px through 1920px, with bounded inner scroll for the agent graph", async ({ page }) => {
+test("US3: renders from 320px through 1920px, the agent graph always fitting with no scroll needed", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto("/");
   await page.getByRole("button", { name: "About This App" }).click();
@@ -111,11 +113,21 @@ test("US3: renders from 320px through 1920px, with bounded inner scroll for the 
   await dialog.locator("#agent-graph").scrollIntoViewIfNeeded();
   await assertNoPageOverflow();
 
-  // The agent graph — the widest diagram — scrolls within its own bounded
-  // container, not the page (FR-021a).
+  // The agent graph — the widest diagram — scales to fit its own bounded
+  // container via its svg's own viewBox, never needing to scroll, even at
+  // this narrow a width (by explicit request — no diagram ever requires a
+  // scroll gesture to see in full).
   const graphScroll = page.getByTestId("agent-graph-scroll");
-  const graphOverflows = await graphScroll.evaluate((el) => el.scrollWidth > el.clientWidth);
-  expect(graphOverflows).toBe(true);
+  const graphOverflows = await graphScroll.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+  expect(graphOverflows).toBe(false);
+
+  // The prompts & model-routing table — the widest table, 4 columns of
+  // real prose — switches to one labeled card per row below 600px instead
+  // of forcing a horizontal scroll or breaking identifiers mid-word.
+  await dialog.locator("#prompts").scrollIntoViewIfNeeded();
+  await assertNoPageOverflow();
+  await expect(dialog.locator("table.about-responsive-table thead").first()).toBeHidden();
+  await expect(dialog.getByRole("cell", { name: "Stage parseIngredients" })).toBeVisible();
 
   await dialog.locator("#closing").scrollIntoViewIfNeeded();
   await assertNoPageOverflow();

@@ -138,6 +138,44 @@ export function AboutPage({ open, onClose }: AboutPageProps) {
         [data-testid="about-page-scroll"]::-webkit-scrollbar { width: var(--space-2); }
         [data-testid="about-page-scroll"]::-webkit-scrollbar-track { background: transparent; }
         [data-testid="about-page-scroll"]::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: var(--radius-sm); }
+
+        /* Below this width, a fixed-column table's own percentage widths
+           leave too little room per column to hold real content (e.g. a
+           17-character stage identifier) without breaking words mid-way —
+           so each row becomes its own labeled block instead. */
+        @media (max-width: 600px) {
+          .about-responsive-table thead { display: none; }
+          .about-responsive-table, .about-responsive-table tbody, .about-responsive-table tr, .about-responsive-table td {
+            display: block;
+            width: 100% !important;
+          }
+          .about-responsive-table {
+            border: none;
+            border-radius: 0;
+          }
+          .about-responsive-table tr {
+            margin-bottom: var(--space-3);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+          }
+          .about-responsive-table tr:last-child { margin-bottom: 0; }
+          .about-responsive-table td {
+            border-bottom: 1px solid var(--color-border);
+            border-left: 3px solid var(--color-border);
+          }
+          .about-responsive-table td:last-child { border-bottom: none; }
+          .about-responsive-table td::before {
+            content: attr(data-label);
+            display: block;
+            font-size: var(--text-xs);
+            font-weight: 600;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: var(--space-1);
+          }
+        }
       `}</style>
     </div>
   );

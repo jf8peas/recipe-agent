@@ -143,7 +143,7 @@ export function AgentGraphDiagram() {
       viewBox="0 0 508 400"
       role="img"
       aria-label="Seven agent nodes — parseIngredients, proposeDirections, selectDirection, draftRecipe, critique, refine, finalize — connected by two conditional edges (usable?, blocking and budget?) that route to an error End, a refine loop, or the main End."
-      style={{ display: "block", width: "100%", height: "auto", minWidth: "420px" }}
+      style={{ display: "block", width: "100%", height: "auto" }}
     >
       <defs>
         <marker id="g-arrow" markerWidth={7.2} markerHeight={7.2} refX={5.4} refY={3.6} orient="auto">
