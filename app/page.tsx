@@ -19,7 +19,18 @@ import { StageFailureBanner } from "@/components/StageFailureBanner";
 import { BranchTimeline } from "@/components/BranchTimeline";
 import type { EditableField } from "@/lib/field-consumers";
 import { deriveRunPath, type GraphNodeName } from "@/lib/graph-progress";
-import { STAGE_TO_TAB, critiqueCycleOf, tabLabel, visibleTabs, type TabId } from "@/lib/run-tabs";
+import type { RecipeDraft } from "@/lib/agent/state";
+import {
+  STAGE_TO_TAB,
+  critiqueCycleOf,
+  draftOccurrenceOf,
+  draftTabCheckpoints,
+  latestTabOfKind,
+  stackableTabs,
+  tabLabel,
+  visibleTabs,
+  type TabId,
+} from "@/lib/run-tabs";
 
 const LIMIT_ERROR_CODES = new Set([
   "rate-limited",
@@ -53,6 +64,7 @@ export default function HomePage() {
     retrySave,
     viewCheckpoint,
     clearViewedCheckpoint,
+    fetchCheckpointState,
     fork,
     openSession,
     deleteSessionById,
@@ -161,32 +173,62 @@ export default function HomePage() {
   }, [visible.join(",")]);
 
   /** Clicking a graph node selects its tab; a no-op if that tab isn't
-   * visible yet (data-model.md § 4). `critique` has no single fixed tab
-   * (each cycle gets its own) — clicking it selects whichever critique tab
-   * is newest, since that's the one it's currently pointing at. */
+   * visible yet (data-model.md § 4). Neither `critique` nor
+   * `draftRecipe`/`refine` has one single fixed tab (each pass gets its
+   * own) — clicking any of them selects whichever tab of that kind is
+   * newest, since that's the one it's currently pointing at. */
   function handleSelectNode(node: GraphNodeName) {
     if (node === "critique") {
-      const latestCritiqueTab = [...visible].reverse().find((id) => critiqueCycleOf(id) !== null);
-      if (latestCritiqueTab) setActiveTab(latestCritiqueTab);
+      const tab = latestTabOfKind(visible, critiqueCycleOf);
+      if (tab) setActiveTab(tab);
+      return;
+    }
+    if (node === "draftRecipe" || node === "refine") {
+      const tab = latestTabOfKind(visible, draftOccurrenceOf);
+      if (tab) setActiveTab(tab);
       return;
     }
     const tab = STAGE_TO_TAB[node];
     if (tab && visible.includes(tab)) setActiveTab(tab);
   }
 
-  /** The inverse direction for `AgentGraphProgress`'s `selectedNode` prop:
-   * the first node mapping to the active tab, preferring whichever is
-   * `current` — resolves refine sharing the `draft` tab with draftRecipe.
-   * Any critique-cycle tab always resolves to the `critique` node itself,
-   * since there's only ever one such node on the graph. */
+  /** The inverse direction for `AgentGraphProgress`'s `selectedNode` prop.
+   * Any critique-cycle tab always resolves to the `critique` node (there's
+   * only ever one on the graph); any draft tab resolves to whichever of
+   * `draftRecipe`/`refine` is `current`, else `draftRecipe`. Everything
+   * else is the first node mapping to the active tab. */
   const selectedNode: GraphNodeName | null = (() => {
     if (!activeTab || !path) return null;
     if (critiqueCycleOf(activeTab) !== null) return "critique";
+    if (draftOccurrenceOf(activeTab) !== null) {
+      return path.nodes.refine === "current" ? "refine" : "draftRecipe";
+    }
     const candidates = (Object.keys(STAGE_TO_TAB) as GraphNodeName[]).filter(
       (node) => STAGE_TO_TAB[node] === activeTab,
     );
     return candidates.find((node) => path.nodes[node] === "current") ?? candidates[0] ?? null;
   })();
+
+  // A non-latest draft tab's content isn't in `displayedState.recipeDraft`
+  // (that only ever holds the current revision) — fetch and cache it by
+  // checkpoint id, independent of the singular "viewing history" mode.
+  const draftCheckpoints = path ? draftTabCheckpoints(path) : {};
+  const latestDraftTab = latestTabOfKind(visible, draftOccurrenceOf);
+  const isHistoricalDraftTab = activeTab !== null && draftOccurrenceOf(activeTab) !== null && activeTab !== latestDraftTab;
+  const historicalDraftCheckpointId = activeTab && isHistoricalDraftTab ? draftCheckpoints[activeTab] : undefined;
+  const [draftCache, setDraftCache] = useState<Record<string, RecipeDraft>>({});
+  useEffect(() => {
+    if (!historicalDraftCheckpointId || !snapshot || draftCache[historicalDraftCheckpointId]) return;
+    const branchId = (viewed ?? snapshot).branchId;
+    let cancelled = false;
+    void fetchCheckpointState(snapshot.sessionId, branchId, historicalDraftCheckpointId).then((fetchedState) => {
+      if (cancelled || !fetchedState?.recipeDraft) return;
+      setDraftCache((prev) => ({ ...prev, [historicalDraftCheckpointId]: fetchedState.recipeDraft! }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [historicalDraftCheckpointId, snapshot, viewed, fetchCheckpointState, draftCache]);
 
   if (!clientId || restoring) {
     return (
@@ -367,11 +409,12 @@ export default function HomePage() {
             // can carry several fields into one `/fork` call) — the tab
             // strip's one-at-a-time view is for browsing only.
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-              {visible.map((tab) => (
+              {stackableTabs(visible).map((tab) => (
                 <RunTabs
                   key={tab}
                   activeTab={tab}
                   state={displayedState}
+                  visible={visible}
                   editable
                   onFieldChange={handleFieldChange}
                   onEditThisStage={startEdit}
@@ -390,8 +433,10 @@ export default function HomePage() {
               <RunTabs
                 activeTab={activeTab}
                 state={displayedState}
+                visible={visible}
                 editable={false}
                 onEditThisStage={startEdit}
+                historicalDraft={isHistoricalDraftTab ? (historicalDraftCheckpointId ? (draftCache[historicalDraftCheckpointId] ?? null) : null) : undefined}
               />
             </>
           )}

@@ -123,6 +123,13 @@ export interface RunPathState {
   edges: Record<string, NodeVisualState>;
   current: GraphNodeName | null;
   takenInOrder: GraphNodeName[];
+  /** Parallel to `takenInOrder` — the checkpoint that produced each entry,
+   * or `null` for the synthesized leading `parseIngredients` (when it
+   * wasn't its own distinct timeline entry, e.g. a fork's replayed root).
+   * Lets callers that need a *specific past* occurrence of a repeatable
+   * stage (`draftRecipe`/`refine`, `critique`) — not just its current
+   * value — fetch that occurrence's own historical state. */
+  takenCheckpoints: (string | null)[];
 }
 
 function edgeKey(from: GraphNodeName, to: GraphNodeName): string {
@@ -171,10 +178,15 @@ export function deriveRunPath(
   // entry at all proves parseIngredients completed; prepend it only when
   // it isn't already the first real entry, to avoid double-counting it.
   const takenInOrder: GraphNodeName[] = [];
+  const takenCheckpoints: (string | null)[] = [];
   if (realEntries.length > 0 && realEntries[0]!.stage !== "parseIngredients") {
     takenInOrder.push("parseIngredients");
+    takenCheckpoints.push(null);
   }
-  for (const e of realEntries) takenInOrder.push(e.stage as GraphNodeName);
+  for (const e of realEntries) {
+    takenInOrder.push(e.stage as GraphNodeName);
+    takenCheckpoints.push(e.checkpointId);
+  }
 
   const takenSet = new Set(takenInOrder);
 
@@ -220,5 +232,5 @@ export function deriveRunPath(
     edges[edgeKey(from, to)] = nodes[to];
   }
 
-  return { nodes, edges, current, takenInOrder };
+  return { nodes, edges, current, takenInOrder, takenCheckpoints };
 }

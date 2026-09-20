@@ -8,12 +8,16 @@ import { FinalRecipeView } from "@/components/fields/FinalRecipeView";
 import { DirectionSelectionEditor } from "@/components/fields/DirectionSelectionEditor";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { EDITABLE_TABS, critiqueCycleOf, tabLabel, type TabId } from "@/lib/run-tabs";
+import { critiqueCycleOf, draftOccurrenceOf, isEditableTab, tabLabel, type TabId } from "@/lib/run-tabs";
 import type { EditableField } from "@/lib/field-consumers";
 
 export interface RunTabsProps {
   activeTab: TabId;
   state: State;
+  /** Every currently visible tab, in order — needed to tell whether
+   * `activeTab` (when it's a draft tab) is the *latest* revision or a
+   * historical one, and to compute "Edit this stage"'s visibility. */
+  visible: TabId[];
   /** Already in edit mode (spec 006 US3) — when true, the tab body's own
    * field editor renders editable and no "Edit this stage" link shows
    * (the existing global Cancel/Try-this-version controls in the sticky
@@ -24,6 +28,13 @@ export interface RunTabsProps {
    * "Edit" button today) — this is not new functionality, just a second,
    * per-tab entry point into the same global edit mode (research R1). */
   onEditThisStage: () => void;
+  /** Set only when `activeTab` is a *historical* (non-latest) draft tab —
+   * `state.recipeDraft` always holds just the current/latest revision, so
+   * an older one is fetched separately and handed in here: `null` while
+   * that fetch is still in flight (or failed), the draft once it lands.
+   * Omitted for every other tab, including the latest draft tab, which
+   * reads `state.recipeDraft` directly as before. */
+  historicalDraft?: RecipeDraft | null;
 }
 
 /**
@@ -33,8 +44,16 @@ export interface RunTabsProps {
  * unchanged; this component only decides which one shows and wraps it in
  * the shared `Card` primitive.
  */
-export function RunTabs({ activeTab, state, editable, onFieldChange, onEditThisStage }: RunTabsProps) {
-  const showEditLink = !editable && EDITABLE_TABS.has(activeTab);
+export function RunTabs({
+  activeTab,
+  state,
+  visible,
+  editable,
+  onFieldChange,
+  onEditThisStage,
+  historicalDraft,
+}: RunTabsProps) {
+  const showEditLink = !editable && isEditableTab(activeTab, visible);
   // The Tabs strip already shows tabLabel()'s own wording ("Direction
   // selection") as the clickable tab name — the content heading below
   // keeps `StatePanel.tsx`'s prior wording ("Direction selected",
@@ -43,6 +62,8 @@ export function RunTabs({ activeTab, state, editable, onFieldChange, onEditThisS
   const contentHeading = activeTab === "selection" ? "Direction selected" : tabLabel(activeTab);
   const critiqueCycle = critiqueCycleOf(activeTab);
   const critique = critiqueCycle !== null ? state.critiques.find((c) => c.cycle === critiqueCycle) : undefined;
+  const isDraftTab = draftOccurrenceOf(activeTab) !== null;
+  const isHistoricalDraft = isDraftTab && historicalDraft !== undefined;
 
   return (
     <Card heading={contentHeading}>
@@ -90,17 +111,28 @@ export function RunTabs({ activeTab, state, editable, onFieldChange, onEditThisS
         />
       )}
 
-      {activeTab === "draft" && state.recipeDraft && (
-        <RecipeDraftEditor
-          recipeDraft={state.recipeDraft}
-          editable={editable}
-          onChange={
-            editable && onFieldChange
-              ? (value: RecipeDraft | null, error: string | null) => onFieldChange("recipeDraft", value, error)
-              : undefined
-          }
-        />
-      )}
+      {isDraftTab &&
+        (isHistoricalDraft ? (
+          historicalDraft ? (
+            <RecipeDraftEditor recipeDraft={historicalDraft} editable={false} />
+          ) : (
+            <p style={{ margin: 0, color: "var(--color-text-muted)", fontSize: "var(--text-sm)" }}>
+              Loading this revision…
+            </p>
+          )
+        ) : (
+          state.recipeDraft && (
+            <RecipeDraftEditor
+              recipeDraft={state.recipeDraft}
+              editable={editable}
+              onChange={
+                editable && onFieldChange
+                  ? (value: RecipeDraft | null, error: string | null) => onFieldChange("recipeDraft", value, error)
+                  : undefined
+              }
+            />
+          )
+        ))}
 
       {critique && <CritiqueView critique={critique} />}
 

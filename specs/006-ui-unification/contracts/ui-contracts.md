@@ -46,7 +46,8 @@ interface TabsProps { tabs: { id: TabId; label: string }[]; activeId: TabId | nu
 |---|---|
 | `role="tablist"` container, one `role="tab"` per entry, `aria-selected` on the active one. | FR-011, FR-020 |
 | Every tab reachable and activatable via keyboard (native Tab order onto each button; Enter/Space activates, standard button semantics — no roving-tabindex arrow-key pattern introduced, since this is a small, always-fully-visible tab strip, not a large disclosure widget). | FR-020 |
-| New tabs appear in-place (no reflow surprise) as `tabs` grows — the strip itself scrolls horizontally (`overflow-x:auto`) rather than wrapping, matching `design_files/index.html`'s own `.ra-tabs` rule, at any width narrower than all labels fit. | FR-011, SC-002 (no page-level horizontal scroll — this scroll is scoped to the tab strip itself, the same bounded-container pattern used elsewhere) |
+| New tabs appear in-place (no reflow surprise) as `tabs` grows — the strip wraps onto additional rows (`flex-wrap:wrap`) rather than scrolling horizontally, once a run's own critique/draft-revision cycles produce more tabs than fit on one line (superseded `design_files/index.html`'s `.ra-tabs` `overflow-x:auto` rule, by explicit request — no tab is ever reachable only via a scroll gesture). | FR-011, SC-002 (no page-level horizontal scroll) |
+| Each tab renders as a distinct bordered pill, not just an underlined label — the active one is filled (background + border + bold together, never color alone) so it reads as a clickable control even once wrapped across rows. | Constitution ("color is never the sole signal") |
 
 ## `AgentGraphProgress` (rebuilt layout, same prop contract as feature 005 plus one new one)
 

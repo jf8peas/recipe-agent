@@ -269,6 +269,95 @@ test.describe("Each pass through critique is its own tab", () => {
   });
 });
 
+test.describe("Each recipe draft revision is its own tab", () => {
+  test("a multi-cycle refine loop produces one numbered tab per draft revision, the last one being live", async ({
+    page,
+  }) => {
+    await startSession(page, ["2 eggs", "spinach", "e2e-trigger-blocking-critique"]);
+    while (await page.getByRole("button", { name: /^Step \(/ }).isVisible()) {
+      await clickStep(page);
+    }
+    await expect(page.getByRole("button", { name: "Start a new session" })).toBeVisible();
+
+    // draftRecipe produces revision 1; each of the 2 refine cycles produces
+    // one more (MAX_REFINE_CYCLES defaults to 2) — 3 draft tabs total.
+    await expect(page.getByRole("tab", { name: "Recipe draft 1" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Recipe draft 2" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Recipe draft 3" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Recipe draft 4" })).toHaveCount(0);
+  });
+
+  test("an older draft tab fetches and shows that revision's own content, read-only", async ({ page }) => {
+    await startSession(page, ["2 eggs", "spinach", "e2e-trigger-blocking-critique"]);
+    while (await page.getByRole("button", { name: /^Step \(/ }).isVisible()) {
+      await clickStep(page);
+    }
+
+    await page.getByRole("tab", { name: "Recipe draft 1" }).click();
+    await expect(page.getByRole("heading", { name: "Recipe draft 1" })).toBeVisible();
+    await expect(page.getByText("Spinach Frittata")).toBeVisible();
+    // A historical revision is never editable — no "Edit this stage" link.
+    await expect(page.getByRole("button", { name: "Edit this stage" })).toHaveCount(0);
+
+    // The live/latest draft tab is still editable as normal.
+    await page.getByRole("tab", { name: "Recipe draft 3" }).click();
+    await expect(page.getByRole("button", { name: "Edit this stage" })).toBeVisible();
+  });
+
+  test("clicking the draftRecipe/refine node selects the newest draft tab", async ({ page }) => {
+    await startSession(page, ["2 eggs", "spinach", "e2e-trigger-blocking-critique"]);
+    await clickStep(page); // proposeDirections
+    await clickStep(page); // selectDirection
+    await clickStep(page); // draftRecipe (revision 1)
+
+    await page.getByRole("tab", { name: "Ingredients" }).click();
+    await page.getByTestId("agent-graph-node-draftRecipe").click();
+    await expect(page.getByRole("tab", { name: "Recipe draft 1" })).toHaveAttribute("aria-selected", "true");
+
+    await clickStep(page); // critique cycle 1 (blocks) -> refine
+    await clickStep(page); // refine -> draft revision 2
+
+    await page.getByRole("tab", { name: "Ingredients" }).click();
+    await page.getByTestId("agent-graph-node-refine").click();
+    await expect(page.getByRole("tab", { name: "Recipe draft 2" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+test.describe("Tabs wrap onto multiple rows instead of scrolling, and read as clickable pills", () => {
+  test("many tabs wrap across rows with no horizontal overflow, and the active one is visually distinct", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 700, height: 900 });
+    await startSession(page, ["2 eggs", "spinach", "e2e-trigger-blocking-critique"]);
+    while (await page.getByRole("button", { name: /^Step \(/ }).isVisible()) {
+      await clickStep(page);
+    }
+
+    const tablist = page.getByRole("tablist");
+    const overflowsHorizontally = await tablist.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+    expect(overflowsHorizontally).toBe(false);
+
+    const first = await page.getByRole("tab", { name: "Ingredients" }).boundingBox();
+    const last = await page.getByRole("tab", { name: "Final recipe" }).boundingBox();
+    // With 10 tabs at 700px wide, they can't all fit one row — the last one
+    // must have wrapped onto a lower row than the first.
+    expect(last!.y).toBeGreaterThan(first!.y);
+
+    const activeTab = page.getByRole("tab", { name: "Final recipe" });
+    const inactiveTab = page.getByRole("tab", { name: "Ingredients" });
+    const [activeBg, activeBorder, inactiveBg, inactiveBorder] = await Promise.all([
+      activeTab.evaluate((el) => getComputedStyle(el).backgroundColor),
+      activeTab.evaluate((el) => getComputedStyle(el).borderColor),
+      inactiveTab.evaluate((el) => getComputedStyle(el).backgroundColor),
+      inactiveTab.evaluate((el) => getComputedStyle(el).borderColor),
+    ]);
+    expect(activeBg).not.toBe(inactiveBg);
+    expect(activeBorder).not.toBe(inactiveBorder);
+
+    await expectNoA11yViolations(page);
+  });
+});
+
 test.describe("US4: session list, entry form, running session, and About page share one width and button style", () => {
   test("the same maximum content width across all four screens", async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 900 });

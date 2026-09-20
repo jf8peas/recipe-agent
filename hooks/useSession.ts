@@ -398,6 +398,30 @@ export function useSession() {
 
   const clearViewedCheckpoint = useCallback(() => setViewed(null), []);
 
+  /** Reads one checkpoint's own state without touching `viewed`/`snapshot`
+   * or the shared `loading`/`error` state `callApi` otherwise sets — used
+   * to show a specific past recipe-draft revision's own content on its own
+   * tab, independent of the singular "viewing an earlier step" History-
+   * panel mode (`viewCheckpoint`). Returns `null` on any failure; callers
+   * treat that as "still unavailable" rather than surfacing a page-level error. */
+  const fetchCheckpointState = useCallback(
+    async (sessionId: string, branchId: string, checkpointId: string): Promise<State | null> => {
+      if (!clientId) return null;
+      try {
+        const res = await fetch(
+          `/api/recipe/${sessionId}/state?branchId=${branchId}&checkpointId=${checkpointId}`,
+          { headers: { "X-Client-Id": clientId } },
+        );
+        if (!res.ok) return null;
+        const json = (await res.json()) as StateResponse;
+        return json.state;
+      } catch {
+        return null;
+      }
+    },
+    [clientId],
+  );
+
   /** Edit & Fork (spec FR-026–FR-029): seeds a new branch, replaying up to `checkpointId` with `patch` applied. */
   const fork = useCallback(
     async (branchId: string, checkpointId: string, patch: Partial<Record<EditableField, unknown>>) => {
@@ -476,6 +500,7 @@ export function useSession() {
     retrySave,
     viewCheckpoint,
     clearViewedCheckpoint,
+    fetchCheckpointState,
     fork,
     openSession,
     deleteSessionById,
