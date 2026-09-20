@@ -3,12 +3,12 @@ import { IngredientsEditor } from "@/components/fields/IngredientsEditor";
 import { ConstraintsEditor } from "@/components/fields/ConstraintsEditor";
 import { DirectionsEditor } from "@/components/fields/DirectionsEditor";
 import { RecipeDraftEditor } from "@/components/fields/RecipeDraftEditor";
-import { CritiquesView } from "@/components/fields/CritiquesView";
+import { CritiqueView } from "@/components/fields/CritiqueView";
 import { FinalRecipeView } from "@/components/fields/FinalRecipeView";
 import { DirectionSelectionEditor } from "@/components/fields/DirectionSelectionEditor";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { EDITABLE_TABS, TAB_LABELS, type TabId } from "@/lib/run-tabs";
+import { EDITABLE_TABS, critiqueCycleOf, tabLabel, type TabId } from "@/lib/run-tabs";
 import type { EditableField } from "@/lib/field-consumers";
 
 export interface RunTabsProps {
@@ -35,12 +35,14 @@ export interface RunTabsProps {
  */
 export function RunTabs({ activeTab, state, editable, onFieldChange, onEditThisStage }: RunTabsProps) {
   const showEditLink = !editable && EDITABLE_TABS.has(activeTab);
-  // The Tabs strip already shows TAB_LABELS' own wording ("Direction
+  // The Tabs strip already shows tabLabel()'s own wording ("Direction
   // selection") as the clickable tab name — the content heading below
   // keeps `StatePanel.tsx`'s prior wording ("Direction selected",
   // describing the outcome) since existing e2e tests scope by it; every
-  // other tab's old heading text already equals its TAB_LABELS entry.
-  const contentHeading = activeTab === "selection" ? "Direction selected" : TAB_LABELS[activeTab];
+  // other tab's old heading text already equals its tabLabel().
+  const contentHeading = activeTab === "selection" ? "Direction selected" : tabLabel(activeTab);
+  const critiqueCycle = critiqueCycleOf(activeTab);
+  const critique = critiqueCycle !== null ? state.critiques.find((c) => c.cycle === critiqueCycle) : undefined;
 
   return (
     <Card heading={contentHeading}>
@@ -100,7 +102,7 @@ export function RunTabs({ activeTab, state, editable, onFieldChange, onEditThisS
         />
       )}
 
-      {activeTab === "critique" && <CritiquesView critiques={state.critiques} />}
+      {critique && <CritiqueView critique={critique} />}
 
       {activeTab === "final" && state.finalRecipe && <FinalRecipeView finalRecipe={state.finalRecipe} />}
 

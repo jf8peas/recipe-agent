@@ -4,6 +4,7 @@ import {
   GRAPH_EDGES,
   GRAPH_NODES,
   deriveRunPath,
+  type GraphNodeLayout,
   type GraphNodeName,
   type NodeVisualState,
 } from "@/lib/graph-progress";
@@ -131,6 +132,45 @@ function edgeStart(from: GraphNodeName, to: GraphNodeName): { x: number; y: numb
   return { x: node.x, y: node.y };
 }
 
+/** The decision point whose *main* (first) route this edge is, if any — an
+ * edge like `critique -> finalize` visually passes straight through its
+ * diamond, so it's rendered as two segments (source -> diamond, diamond ->
+ * target) rather than one, both so an arrowhead can land at the diamond and
+ * so the first segment can be highlighted as "current" while sitting at the
+ * source node deciding (e.g. critique, about to resolve blocking & budget?). */
+function mainPathDecision(from: GraphNodeName, to: GraphNodeName) {
+  return DECISION_POINTS.find((d) => d.after === from && d.routesTo[0] === to) ?? null;
+}
+
+const ARROW_GAP = 4;
+const DIAMOND_CLEARANCE = DIAMOND_HALF + ARROW_GAP;
+
+/** Pulls `to` back toward `from` by `distance`, along the line between them
+ * — otherwise the arrowhead marker (placed exactly at the line's end)
+ * lands at the target shape's own center and renders fully hidden under
+ * it, since shapes are drawn after edges. */
+function shortenEndpoint(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  distance: number,
+): { x: number; y: number } {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: to.x - (dx / len) * distance, y: to.y - (dy / len) * distance };
+}
+
+/** How far back from a node's own center an incoming arrow must stop to
+ * clear its shape — a terminal's clearance depends on whether the edge
+ * approaches it horizontally or vertically (this grid-aligned layout never
+ * approaches a terminal diagonally). */
+function nodeClearance(node: GraphNodeLayout, dx: number, dy: number): number {
+  if (node.kind === "terminal") {
+    return (Math.abs(dx) >= Math.abs(dy) ? TERMINAL_WIDTH / 2 : TERMINAL_HEIGHT / 2) + ARROW_GAP;
+  }
+  return NODE_RADIUS + ARROW_GAP;
+}
+
 function describeRunPath(
   nodes: Record<GraphNodeName, NodeVisualState>,
   takenInOrder: GraphNodeName[],
@@ -207,9 +247,55 @@ export function AgentGraphProgress({
         </defs>
 
         {GRAPH_EDGES.map(({ from, to }) => {
+          const toNode = GRAPH_NODES.find((n) => n.name === to)!;
+          const dp = mainPathDecision(from, to);
+
+          if (dp) {
+            // Split at the diamond: source -> diamond reflects the source
+            // node's own state (so it reads as "current" — the selected,
+            // highlighted arrow — exactly while sitting at that node
+            // deciding); diamond -> target reflects the target's state, as
+            // every other edge does.
+            const fromNode = GRAPH_NODES.find((n) => n.name === from)!;
+            const sourceStyle = shapeStyle(path.nodes[from]);
+            const targetStyle = shapeStyle(path.edges[`${from}->${to}`]!);
+            const seg1End = shortenEndpoint(fromNode, dp, DIAMOND_CLEARANCE);
+            const seg2End = shortenEndpoint(dp, toNode, nodeClearance(toNode, toNode.x - dp.x, toNode.y - dp.y));
+            return (
+              <g key={`${from}->${to}`}>
+                <line
+                  x1={fromNode.x}
+                  y1={fromNode.y}
+                  x2={seg1End.x}
+                  y2={seg1End.y}
+                  style={{
+                    stroke: sourceStyle.stroke,
+                    strokeWidth: sourceStyle.strokeWidth,
+                    strokeDasharray: sourceStyle.strokeDasharray,
+                    opacity: sourceStyle.opacity,
+                  }}
+                  markerEnd="url(#agp-arrow)"
+                />
+                <line
+                  x1={dp.x}
+                  y1={dp.y}
+                  x2={seg2End.x}
+                  y2={seg2End.y}
+                  style={{
+                    stroke: targetStyle.stroke,
+                    strokeWidth: targetStyle.strokeWidth,
+                    strokeDasharray: targetStyle.strokeDasharray,
+                    opacity: targetStyle.opacity,
+                  }}
+                  markerEnd="url(#agp-arrow)"
+                />
+              </g>
+            );
+          }
+
           const start = edgeStart(from, to);
-          const end = GRAPH_NODES.find((n) => n.name === to)!;
           const style = shapeStyle(path.edges[`${from}->${to}`]!);
+          const end = shortenEndpoint(start, toNode, nodeClearance(toNode, toNode.x - start.x, toNode.y - start.y));
           return (
             <line
               key={`${from}->${to}`}

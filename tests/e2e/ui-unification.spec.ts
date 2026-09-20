@@ -212,6 +212,63 @@ test.describe("US3: stage tabs synced with the graph, action row always reachabl
   });
 });
 
+test.describe("Each pass through critique is its own tab", () => {
+  test("a multi-cycle refine loop produces one tab per critique cycle, each showing that cycle's own content", async ({
+    page,
+  }) => {
+    await startSession(page, ["2 eggs", "spinach", "e2e-trigger-blocking-critique"]);
+    while (await page.getByRole("button", { name: /^Step \(/ }).isVisible()) {
+      await clickStep(page);
+    }
+    await expect(page.getByRole("button", { name: "Start a new session" })).toBeVisible();
+
+    // MAX_REFINE_CYCLES defaults to 2, so a permanently-blocking critique
+    // produces 3 cycles (2 that block, 1 that's overridden by the budget).
+    await expect(page.getByRole("tab", { name: "Critique 1" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Critique 2" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Critique 3" })).toBeVisible();
+
+    await page.getByRole("tab", { name: "Critique 1" }).click();
+    await expect(page.getByRole("heading", { name: "Critique 1" })).toBeVisible();
+    await expect(page.getByText("Blocking — sent back for revision")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Critique 3" }).click();
+    await expect(page.getByRole("heading", { name: "Critique 3" })).toBeVisible();
+  });
+
+  test("clicking the critique node selects the newest critique tab", async ({ page }) => {
+    await startSession(page, ["2 eggs", "spinach", "e2e-trigger-blocking-critique"]);
+    await clickStep(page); // proposeDirections
+    await clickStep(page); // selectDirection
+    await clickStep(page); // draftRecipe
+    await clickStep(page); // critique cycle 1 (blocks) -> refine
+    await clickStep(page); // refine -> critique cycle 2
+    await clickStep(page); // critique cycle 2 (blocks) -> refine
+
+    await page.getByRole("tab", { name: "Ingredients" }).click();
+    await expect(page.getByRole("tab", { name: "Ingredients" })).toHaveAttribute("aria-selected", "true");
+
+    await page.getByTestId("agent-graph-node-critique").click();
+    await expect(page.getByRole("tab", { name: "Critique 2" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("critique content is broken into labeled sections, not one crammed line", async ({ page }) => {
+    await startSession(page, ["2 eggs", "spinach"]);
+    await clickStep(page); // proposeDirections
+    await clickStep(page); // selectDirection
+    await clickStep(page); // draftRecipe
+    await clickStep(page); // critique (non-blocking, straight through)
+    await clickStep(page); // finalize
+
+    await page.getByRole("tab", { name: "Critique 1" }).click();
+    await expect(page.getByText("FEASIBILITY")).toBeVisible();
+    await expect(page.getByText("FLAVOR BALANCE")).toBeVisible();
+    await expect(page.getByText("Straightforward.")).toBeVisible();
+    await expect(page.getByText("Balanced.")).toBeVisible();
+    await expectNoA11yViolations(page);
+  });
+});
+
 test.describe("US4: session list, entry form, running session, and About page share one width and button style", () => {
   test("the same maximum content width across all four screens", async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 900 });

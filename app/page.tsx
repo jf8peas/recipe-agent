@@ -19,7 +19,7 @@ import { StageFailureBanner } from "@/components/StageFailureBanner";
 import { BranchTimeline } from "@/components/BranchTimeline";
 import type { EditableField } from "@/lib/field-consumers";
 import { deriveRunPath, type GraphNodeName } from "@/lib/graph-progress";
-import { STAGE_TO_TAB, TAB_LABELS, visibleTabs, type TabId } from "@/lib/run-tabs";
+import { STAGE_TO_TAB, critiqueCycleOf, tabLabel, visibleTabs, type TabId } from "@/lib/run-tabs";
 
 const LIMIT_ERROR_CODES = new Set([
   "rate-limited",
@@ -143,7 +143,7 @@ export default function HomePage() {
         (viewed ?? snapshot).checkpointId,
       )
     : null;
-  const visible = path ? visibleTabs(path) : [];
+  const visible = path ? visibleTabs(path, displayedState?.critiques ?? []) : [];
 
   // FR-013: the active tab defaults to the most recently *completed* stage
   // — every time a *new* stage completes (the visible set grows), the
@@ -161,17 +161,27 @@ export default function HomePage() {
   }, [visible.join(",")]);
 
   /** Clicking a graph node selects its tab; a no-op if that tab isn't
-   * visible yet (data-model.md § 4). */
+   * visible yet (data-model.md § 4). `critique` has no single fixed tab
+   * (each cycle gets its own) — clicking it selects whichever critique tab
+   * is newest, since that's the one it's currently pointing at. */
   function handleSelectNode(node: GraphNodeName) {
+    if (node === "critique") {
+      const latestCritiqueTab = [...visible].reverse().find((id) => critiqueCycleOf(id) !== null);
+      if (latestCritiqueTab) setActiveTab(latestCritiqueTab);
+      return;
+    }
     const tab = STAGE_TO_TAB[node];
     if (tab && visible.includes(tab)) setActiveTab(tab);
   }
 
   /** The inverse direction for `AgentGraphProgress`'s `selectedNode` prop:
    * the first node mapping to the active tab, preferring whichever is
-   * `current` — resolves critique/refine sharing one tab. */
+   * `current` — resolves refine sharing the `draft` tab with draftRecipe.
+   * Any critique-cycle tab always resolves to the `critique` node itself,
+   * since there's only ever one such node on the graph. */
   const selectedNode: GraphNodeName | null = (() => {
     if (!activeTab || !path) return null;
+    if (critiqueCycleOf(activeTab) !== null) return "critique";
     const candidates = (Object.keys(STAGE_TO_TAB) as GraphNodeName[]).filter(
       (node) => STAGE_TO_TAB[node] === activeTab,
     );
@@ -373,7 +383,7 @@ export default function HomePage() {
           {displayedState && !editMode && activeTab && visible.length > 0 && (
             <>
               <Tabs
-                tabs={visible.map((id) => ({ id, label: TAB_LABELS[id] }))}
+                tabs={visible.map((id) => ({ id, label: tabLabel(id) }))}
                 activeId={activeTab}
                 onChange={(id) => setActiveTab(id as TabId)}
               />

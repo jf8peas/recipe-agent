@@ -128,6 +128,14 @@ const AGD_ROW_2_Y = 250;
 const AGD_ERROR_END_Y = 160;
 const AGD_BOTTOM_Y = 340; // refine and the main End both hang here
 
+// How far back from each shape's own center an incoming arrow must stop to
+// clear it (+ a small gap) — otherwise the arrowhead marker, placed exactly
+// at the line's end, lands at the shape's center and renders fully hidden
+// under it, since shapes are drawn after edges below.
+const AGD_NODE_CLEAR = 34 + 4; // circle radius 34
+const AGD_DIAMOND_CLEAR = 17 + 4; // diamond half-width 17
+const AGD_TERM_V_CLEAR = 15 + 4; // terminal "End" box, half-height 15 — both End boxes are approached vertically here
+
 export function AgentGraphDiagram() {
   return responsiveSvgWrap(
     undefined,
@@ -147,21 +155,23 @@ export function AgentGraphDiagram() {
       </defs>
 
       {/* Row 1: parseIngredients -> usable? -> proposeDirections -> selectDirection */}
-      <line x1={AGD_COL_1} y1={AGD_ROW_1_Y} x2={AGD_COL_2} y2={AGD_ROW_1_Y} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
-      <line x1={AGD_COL_2} y1={AGD_ROW_1_Y} x2={AGD_COL_3} y2={AGD_ROW_1_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
+      <line x1={AGD_COL_1} y1={AGD_ROW_1_Y} x2={AGD_COL_DIAMOND - AGD_DIAMOND_CLEAR} y2={AGD_ROW_1_Y} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
+      <line x1={AGD_COL_DIAMOND} y1={AGD_ROW_1_Y} x2={AGD_COL_2 - AGD_NODE_CLEAR} y2={AGD_ROW_1_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
+      <line x1={AGD_COL_2} y1={AGD_ROW_1_Y} x2={AGD_COL_3 - AGD_NODE_CLEAR} y2={AGD_ROW_1_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
       {/* Join connector: selectDirection (row 1) -> draftRecipe (row 2) */}
-      <line x1={AGD_COL_3} y1={AGD_ROW_1_Y} x2={AGD_COL_3} y2={AGD_ROW_2_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
+      <line x1={AGD_COL_3} y1={AGD_ROW_1_Y} x2={AGD_COL_3} y2={AGD_ROW_2_Y - AGD_NODE_CLEAR} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
       {/* Row 2: draftRecipe -> critique -> blocking? -> finalize */}
-      <line x1={AGD_COL_3} y1={AGD_ROW_2_Y} x2={AGD_COL_2} y2={AGD_ROW_2_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
-      <line x1={AGD_COL_2} y1={AGD_ROW_2_Y} x2={AGD_COL_1} y2={AGD_ROW_2_Y} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
+      <line x1={AGD_COL_3} y1={AGD_ROW_2_Y} x2={AGD_COL_2 + AGD_NODE_CLEAR} y2={AGD_ROW_2_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
+      <line x1={AGD_COL_2} y1={AGD_ROW_2_Y} x2={AGD_COL_DIAMOND + AGD_DIAMOND_CLEAR} y2={AGD_ROW_2_Y} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
+      <line x1={AGD_COL_DIAMOND} y1={AGD_ROW_2_Y} x2={AGD_COL_1 + AGD_NODE_CLEAR} y2={AGD_ROW_2_Y} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
       {/* finalize -> the main End, hanging below it */}
-      <line x1={AGD_COL_1} y1={AGD_ROW_2_Y} x2={AGD_COL_1} y2={AGD_BOTTOM_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
+      <line x1={AGD_COL_1} y1={AGD_ROW_2_Y} x2={AGD_COL_1} y2={AGD_BOTTOM_Y - AGD_TERM_V_CLEAR} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
 
       {/* usable?'s dead-end branch to an error End */}
-      <line x1={AGD_COL_DIAMOND} y1={AGD_ROW_1_Y} x2={AGD_COL_DIAMOND} y2={AGD_ERROR_END_Y} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
+      <line x1={AGD_COL_DIAMOND} y1={AGD_ROW_1_Y} x2={AGD_COL_DIAMOND} y2={AGD_ERROR_END_Y - AGD_TERM_V_CLEAR} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
       {/* blocking & budget?'s branch down to refine, and refine's loop-back to critique */}
-      <line x1={AGD_COL_DIAMOND} y1={AGD_ROW_2_Y} x2={AGD_COL_DIAMOND} y2={AGD_BOTTOM_Y} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
-      <line x1={AGD_COL_DIAMOND} y1={AGD_BOTTOM_Y} x2={AGD_COL_2} y2={AGD_ROW_2_Y} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
+      <line x1={AGD_COL_DIAMOND} y1={AGD_ROW_2_Y} x2={AGD_COL_DIAMOND} y2={AGD_BOTTOM_Y - AGD_NODE_CLEAR} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
+      <line x1={AGD_COL_DIAMOND} y1={AGD_BOTTOM_Y} x2={AGD_COL_2 - 30.4} y2={AGD_ROW_2_Y + 22.8} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
 
       <circle cx={AGD_COL_1} cy={AGD_ROW_1_Y} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
       <text x={AGD_COL_1} y={AGD_ROW_1_Y - 4} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>parse</text>
