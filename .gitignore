@@ -34,3 +34,9 @@ next-env.d.ts
 
 # design context bundle (regenerate with npm run design:context)
 design/_context/
+
+# Playwright
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

@@ -198,6 +198,44 @@ export function useSession() {
     [callApi],
   );
 
+  /** Re-fetches `branchId`'s own current tip and replaces `snapshot` with
+   * it — the self-healing counterpart to an `already-advanced` 409 (spec
+   * `/step` contract): that response means some other request already
+   * advanced past `fromCheckpointId`, so the local `snapshot` is now
+   * definitely stale. Snaps back to the live tip (clearing `viewed`) rather
+   * than trying to guess which checkpoint the visitor "meant" — the whole
+   * point of the error is that reality has moved past what they saw. */
+  const refreshToLiveTip = useCallback(
+    async (sessionId: string, branchId: string): Promise<boolean> => {
+      const historyRes = await fetchHistory(sessionId);
+      if (!historyRes) return false;
+      const leaf = [...historyRes.timeline]
+        .filter((e) => e.threadId === branchId)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .at(-1);
+      if (!leaf) return false;
+      const stateRes = await callApi<StateResponse>(
+        `/api/recipe/${sessionId}/state?branchId=${branchId}&checkpointId=${leaf.checkpointId}`,
+      );
+      if (!stateRes) return false;
+      setSnapshot({
+        sessionId,
+        branchId,
+        checkpointId: stateRes.checkpointId,
+        state: stateRes.state,
+        next: stateRes.next,
+        kind: stateRes.kind,
+        timeline: historyRes.timeline,
+      });
+      setViewed(null);
+      setRetryFromCheckpointId(
+        stateRes.kind === "stage-failure" ? (leaf.parentCheckpointId ?? null) : null,
+      );
+      return true;
+    },
+    [callApi, fetchHistory],
+  );
+
   const resume = useCallback(
     async (sessionId: string) => {
       const historyRes = await fetchHistory(sessionId);
@@ -308,6 +346,15 @@ export function useSession() {
             error: body.error ?? "unknown-error",
             message: body.message ?? "Something went wrong.",
           });
+          // `already-advanced` means some other request (a race between
+          // Auto-run and a manual click, another tab, a retried network
+          // request, ...) already advanced past `fromCheckpointId` — the
+          // held `snapshot` is now definitely stale, not just possibly
+          // stale, so self-heal to whatever the branch's real tip is now
+          // rather than leaving the error sitting over a frozen, wrong
+          // view (research: reported as "This step was already advanced"
+          // showing a graph/tabs state the server had already moved past).
+          if (body.error === "already-advanced") void refreshToLiveTip(sessionId, branchId);
           return null;
         }
 
@@ -325,7 +372,7 @@ export function useSession() {
         setLoading(false);
       }
     },
-    [snapshot, viewed, retryFromCheckpointId, postJson, fetchHistory],
+    [snapshot, viewed, retryFromCheckpointId, postJson, fetchHistory, refreshToLiveTip],
   );
 
   /** Cancels the in-flight stage, if any (spec FR-072–FR-075) — writes nothing. */

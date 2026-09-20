@@ -29,6 +29,7 @@ export function RunningStage({ stageName, onCancel, onPause }: RunningStageProps
       aria-live="polite"
       style={{
         display: "flex",
+        flexWrap: "wrap",
         alignItems: "center",
         gap: "var(--space-3)",
         padding: "var(--space-3) var(--space-4)",
@@ -38,10 +39,10 @@ export function RunningStage({ stageName, onCancel, onPause }: RunningStageProps
       }}
     >
       <Spinner />
-      <span style={{ fontSize: "var(--text-sm)" }}>
+      <span style={{ fontSize: "var(--text-sm)", minWidth: 0, overflowWrap: "anywhere" }}>
         Running <strong>{stageName}</strong>… ({seconds}s)
       </span>
-      <div style={{ marginLeft: "auto", display: "flex", gap: "var(--space-2)" }}>
+      <div style={{ marginLeft: "auto", display: "flex", gap: "var(--space-2)", flexShrink: 0 }}>
         {onPause && (
           <Button variant="secondary" onClick={onPause} title="Finish this stage, then stop before the next one">
             Pause
