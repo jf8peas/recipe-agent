@@ -227,9 +227,32 @@ export function deriveRunPath(
     if (nodes.refine === "not-yet-reached") nodes.refine = "untaken";
   }
 
+  // An edge's own state reflects whether *that specific transition* really
+  // happened — not just its target node's state, which a naive `nodes[to]`
+  // lookup would wrongly apply to every edge pointing at the same node
+  // (e.g. both `draftRecipe->critique` and `refine->critique` land on
+  // `critique`, but only one of them was actually just traversed, and the
+  // other may never have happened at all). "taken" = this transition
+  // occurred at least once (a consecutive pair anywhere in `takenInOrder`);
+  // "current" = the one edge from the last completed stage into the
+  // in-progress one. Any other edge defaults to "not-yet-reached" — except
+  // a decision point's own two outgoing edges (`routesTo`), which fall back
+  // to the target's own state so a rejected branch still reads "untaken".
+  const lastTaken = takenInOrder[takenInOrder.length - 1] ?? null;
+  function isDecisionBranch(from: GraphNodeName, to: GraphNodeName): boolean {
+    return DECISION_POINTS.some((dp) => dp.after === from && (dp.routesTo[0] === to || dp.routesTo[1] === to));
+  }
+  function edgeState(from: GraphNodeName, to: GraphNodeName): NodeVisualState {
+    for (let i = 0; i < takenInOrder.length - 1; i++) {
+      if (takenInOrder[i] === from && takenInOrder[i + 1] === to) return "taken";
+    }
+    if (current && lastTaken === from && current === to) return "current";
+    return isDecisionBranch(from, to) ? nodes[to] : "not-yet-reached";
+  }
+
   const edges = {} as Record<string, NodeVisualState>;
   for (const { from, to } of GRAPH_EDGES) {
-    edges[edgeKey(from, to)] = nodes[to];
+    edges[edgeKey(from, to)] = edgeState(from, to);
   }
 
   return { nodes, edges, current, takenInOrder, takenCheckpoints };

@@ -102,6 +102,19 @@ function shapeStyle(state: NodeVisualState): ShapeStyle {
   }
 }
 
+/** Which arrowhead marker an edge segment uses, matching its own line
+ * color exactly — "taken" and "current" get their own two distinct marker
+ * defs (a completed edge's border+light-fill echoing the completed node's
+ * own look, an in-progress edge's solid fill echoing the current node's),
+ * so a viewer can tell at a glance which single edge is the next step
+ * versus which are already behind it; not-yet-reached/untaken edges share
+ * the existing plain muted marker. */
+function arrowMarkerId(state: NodeVisualState): string {
+  if (state === "taken") return "agp-arrow-taken";
+  if (state === "current") return "agp-arrow-current";
+  return "agp-arrow-muted";
+}
+
 function textFill(state: NodeVisualState): string {
   if (state === "current") return "var(--color-accent-contrast)";
   if (state === "not-yet-reached" || state === "untaken") return "var(--color-text-muted)";
@@ -241,8 +254,22 @@ export function AgentGraphProgress({
         style={{ display: "block", width: "100%", height: "auto", minWidth: "460px" }}
       >
         <defs>
-          <marker id="agp-arrow" markerWidth={7} markerHeight={7} refX={5} refY={3.5} orient="auto">
+          <marker id="agp-arrow-muted" markerWidth={7} markerHeight={7} refX={5} refY={3.5} orient="auto">
             <path d="M0,0 L7,3.5 L0,7 z" style={{ fill: "var(--color-text-muted)" }} />
+          </marker>
+          <marker id="agp-arrow-current" markerWidth={7} markerHeight={7} refX={5} refY={3.5} orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 z" style={{ fill: "var(--color-accent)" }} />
+          </marker>
+          <marker id="agp-arrow-taken" markerWidth={9} markerHeight={9} refX={7} refY={4.5} orient="auto">
+            <path
+              d="M1,1 L8,4.5 L1,8 z"
+              style={{
+                fill: "color-mix(in srgb, var(--color-accent) 10%, var(--color-surface))",
+                stroke: "var(--color-accent)",
+                strokeWidth: 1,
+                strokeLinejoin: "round",
+              }}
+            />
           </marker>
         </defs>
 
@@ -257,8 +284,10 @@ export function AgentGraphProgress({
             // deciding); diamond -> target reflects the target's state, as
             // every other edge does.
             const fromNode = GRAPH_NODES.find((n) => n.name === from)!;
-            const sourceStyle = shapeStyle(path.nodes[from]);
-            const targetStyle = shapeStyle(path.edges[`${from}->${to}`]!);
+            const sourceState = path.nodes[from];
+            const targetState = path.edges[`${from}->${to}`]!;
+            const sourceStyle = shapeStyle(sourceState);
+            const targetStyle = shapeStyle(targetState);
             const seg1End = shortenEndpoint(fromNode, dp, DIAMOND_CLEARANCE);
             const seg2End = shortenEndpoint(dp, toNode, nodeClearance(toNode, toNode.x - dp.x, toNode.y - dp.y));
             return (
@@ -274,7 +303,7 @@ export function AgentGraphProgress({
                     strokeDasharray: sourceStyle.strokeDasharray,
                     opacity: sourceStyle.opacity,
                   }}
-                  markerEnd="url(#agp-arrow)"
+                  markerEnd={`url(#${arrowMarkerId(sourceState)})`}
                 />
                 <line
                   x1={dp.x}
@@ -287,14 +316,15 @@ export function AgentGraphProgress({
                     strokeDasharray: targetStyle.strokeDasharray,
                     opacity: targetStyle.opacity,
                   }}
-                  markerEnd="url(#agp-arrow)"
+                  markerEnd={`url(#${arrowMarkerId(targetState)})`}
                 />
               </g>
             );
           }
 
           const start = edgeStart(from, to);
-          const style = shapeStyle(path.edges[`${from}->${to}`]!);
+          const edgeState = path.edges[`${from}->${to}`]!;
+          const style = shapeStyle(edgeState);
           const end = shortenEndpoint(start, toNode, nodeClearance(toNode, toNode.x - start.x, toNode.y - start.y));
           return (
             <line
@@ -309,7 +339,7 @@ export function AgentGraphProgress({
                 strokeDasharray: style.strokeDasharray,
                 opacity: style.opacity,
               }}
-              markerEnd="url(#agp-arrow)"
+              markerEnd={`url(#${arrowMarkerId(edgeState)})`}
             />
           );
         })}

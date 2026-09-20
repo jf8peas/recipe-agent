@@ -219,6 +219,49 @@ describe("deriveRunPath", () => {
     expect(result.current).toBe("critique");
   });
 
+  it("edge state reflects the specific transition, not just the target node — the refine->critique loop-back edge isn't 'current' just because critique is", () => {
+    const timeline = [
+      root(0),
+      entry({ stage: "parseIngredients", step: 1, isLeaf: false }),
+      entry({ stage: "proposeDirections", step: 2, isLeaf: false }),
+      entry({ stage: "selectDirection", step: 3, isLeaf: false }),
+      entry({ stage: "draftRecipe", step: 4 }),
+    ];
+    const tip = timeline[timeline.length - 1]!;
+    // draftRecipe just finished; critique is about to run for the very
+    // first time — refine has never run at all.
+    const result = deriveRunPath(timeline, BRANCH, ["critique"], "in-progress", tip.checkpointId);
+
+    expect(result.current).toBe("critique");
+    expect(result.nodes.refine).toBe("not-yet-reached");
+    // The one real "next step" arrow: draftRecipe -> critique.
+    expect(result.edges["draftRecipe->critique"]).toBe("current");
+    // Not a real edge yet — refine has never produced this transition.
+    expect(result.edges["refine->critique"]).toBe("not-yet-reached");
+  });
+
+  it("edge state: a loop-back edge reads 'taken' once it has actually happened, distinct from the fresh 'current' edge on a later cycle", () => {
+    const timeline = [
+      root(0),
+      entry({ stage: "parseIngredients", step: 1, isLeaf: false }),
+      entry({ stage: "proposeDirections", step: 2, isLeaf: false }),
+      entry({ stage: "selectDirection", step: 3, isLeaf: false }),
+      entry({ stage: "draftRecipe", step: 4, isLeaf: false }),
+      entry({ stage: "critique", step: 5, isLeaf: false }),
+      entry({ stage: "refine", step: 6 }),
+    ];
+    const tip = timeline[timeline.length - 1]!;
+    // refine just finished its first cycle; critique is about to re-run.
+    const result = deriveRunPath(timeline, BRANCH, ["critique"], "in-progress", tip.checkpointId);
+
+    expect(result.current).toBe("critique");
+    // The edge that got us here the FIRST time (draftRecipe -> critique) is
+    // now fully in the past — "taken", not "current".
+    expect(result.edges["draftRecipe->critique"]).toBe("taken");
+    // The edge about to complete this cycle: refine -> critique.
+    expect(result.edges["refine->critique"]).toBe("current");
+  });
+
   it("viewing a historical checkpoint: truncates to that point, ignoring the live tip's later progress", () => {
     const timeline = [
       root(0),
