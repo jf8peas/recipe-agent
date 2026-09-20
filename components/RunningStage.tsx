@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Spinner } from "@/components/ui/Spinner";
+import { Button } from "@/components/ui/Button";
 
 interface RunningStageProps {
   stageName: string;
@@ -35,61 +37,20 @@ export function RunningStage({ stageName, onCancel, onPause }: RunningStageProps
         background: "var(--color-surface)",
       }}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          display: "inline-block",
-          width: "1em",
-          height: "1em",
-          borderRadius: "50%",
-          border: "2px solid var(--color-border)",
-          borderTopColor: "var(--color-accent)",
-          animation: "recipe-agent-spin 0.8s linear infinite",
-        }}
-      />
+      <Spinner />
       <span style={{ fontSize: "var(--text-sm)" }}>
         Running <strong>{stageName}</strong>… ({seconds}s)
       </span>
       <div style={{ marginLeft: "auto", display: "flex", gap: "var(--space-2)" }}>
         {onPause && (
-          <button
-            type="button"
-            onClick={onPause}
-            title="Finish this stage, then stop before the next one"
-            style={{
-              padding: "var(--space-1) var(--space-3)",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--color-border)",
-              background: "transparent",
-              color: "var(--color-text)",
-              font: "inherit",
-              cursor: "pointer",
-            }}
-          >
+          <Button variant="secondary" onClick={onPause} title="Finish this stage, then stop before the next one">
             Pause
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
-          onClick={onCancel}
-          style={{
-            padding: "var(--space-1) var(--space-3)",
-            borderRadius: "var(--radius-sm)",
-            border: "1px solid var(--color-border)",
-            background: "transparent",
-            color: "var(--color-text)",
-            font: "inherit",
-            cursor: "pointer",
-          }}
-        >
+        <Button variant="secondary" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
-      <style>{`
-        @keyframes recipe-agent-spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }

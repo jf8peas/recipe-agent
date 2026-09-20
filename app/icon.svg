@@ -1,0 +1,7 @@
+<!-- Colors are the literal light-mode values of --color-accent/--color-accent-contrast
+     (app/tokens.css) — a standalone favicon file can't read CSS custom properties,
+     so keep this in sync manually if those tokens change (spec 006 US1). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#b5502f"/>
+  <text x="32" y="42" text-anchor="middle" font-family="ui-monospace, 'Cascadia Code', monospace" font-size="26" font-weight="700" fill="#ffffff">RA</text>
+</svg>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession, type StepResponse } from "@/hooks/useSession";
 import { useSessionList } from "@/hooks/useSessionList";
 import { bestAvailableTitle } from "@/lib/session-title";
@@ -10,13 +10,16 @@ import { usePauseBetweenStages } from "@/hooks/usePauseBetweenStages";
 import { EntryForm } from "@/components/EntryForm";
 import { SessionList } from "@/components/SessionList";
 import { AgentGraphProgress } from "@/components/AgentGraphProgress";
-import { StatePanel } from "@/components/StatePanel";
+import { RunTabs } from "@/components/RunTabs";
+import { Tabs } from "@/components/ui/Tabs";
 import { ActionToolbar } from "@/components/ActionToolbar";
 import { RunningStage } from "@/components/RunningStage";
 import { UnsavedResultBanner } from "@/components/UnsavedResultBanner";
 import { StageFailureBanner } from "@/components/StageFailureBanner";
 import { BranchTimeline } from "@/components/BranchTimeline";
 import type { EditableField } from "@/lib/field-consumers";
+import { deriveRunPath, type GraphNodeName } from "@/lib/graph-progress";
+import { STAGE_TO_TAB, TAB_LABELS, visibleTabs, type TabId } from "@/lib/run-tabs";
 
 const LIMIT_ERROR_CODES = new Set([
   "rate-limited",
@@ -122,6 +125,59 @@ export default function HomePage() {
   const [patch, setPatch] = useState<Partial<Record<EditableField, unknown>>>({});
   const [patchErrors, setPatchErrors] = useState<Partial<Record<EditableField, string>>>({});
 
+  // The one new piece of interaction state this feature introduces
+  // (data-model.md § 4): user selection wins until the next stage
+  // completes, at which point the effect below moves it to the newest tab.
+  const [activeTab, setActiveTab] = useState<TabId | null>(null);
+
+  const isViewingHistory = viewed !== null;
+  const displayedState = viewed?.state ?? pendingSave?.state ?? snapshot?.state;
+  const displayedNext = viewed?.next ?? snapshot?.next ?? [];
+
+  const path = snapshot
+    ? deriveRunPath(
+        history?.timeline ?? [],
+        (viewed ?? snapshot).branchId,
+        displayedNext,
+        displayedState?.outcome ?? snapshot.state.outcome,
+        (viewed ?? snapshot).checkpointId,
+      )
+    : null;
+  const visible = path ? visibleTabs(path) : [];
+
+  // FR-013: the active tab defaults to the most recently *completed* stage
+  // — every time a *new* stage completes (the visible set grows), the
+  // selection jumps forward to it regardless of where the visitor had
+  // navigated; it only stays put while the set is unchanged (a plain
+  // re-render) or shrinks without removing the current tab.
+  const previousVisibleCount = useRef(0);
+  useEffect(() => {
+    const grew = visible.length > previousVisibleCount.current;
+    if (grew || !activeTab || !visible.includes(activeTab)) {
+      setActiveTab(visible[visible.length - 1] ?? null);
+    }
+    previousVisibleCount.current = visible.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible.join(",")]);
+
+  /** Clicking a graph node selects its tab; a no-op if that tab isn't
+   * visible yet (data-model.md § 4). */
+  function handleSelectNode(node: GraphNodeName) {
+    const tab = STAGE_TO_TAB[node];
+    if (tab && visible.includes(tab)) setActiveTab(tab);
+  }
+
+  /** The inverse direction for `AgentGraphProgress`'s `selectedNode` prop:
+   * the first node mapping to the active tab, preferring whichever is
+   * `current` — resolves critique/refine sharing one tab. */
+  const selectedNode: GraphNodeName | null = (() => {
+    if (!activeTab || !path) return null;
+    const candidates = (Object.keys(STAGE_TO_TAB) as GraphNodeName[]).filter(
+      (node) => STAGE_TO_TAB[node] === activeTab,
+    );
+    return candidates.find((node) => path.nodes[node] === "current") ?? candidates[0] ?? null;
+  })();
+
   if (!clientId || restoring) {
     return (
       <main style={{ padding: "var(--space-6)" }}>
@@ -130,9 +186,6 @@ export default function HomePage() {
     );
   }
 
-  const isViewingHistory = viewed !== null;
-  const displayedState = viewed?.state ?? pendingSave?.state ?? snapshot?.state;
-  const displayedNext = viewed?.next ?? snapshot?.next ?? [];
   const isStageFailure = !isViewingHistory && !editMode && snapshot?.state.outcome === "stage-failure";
 
   function handleFieldChange(field: EditableField, value: unknown, fieldError: string | null) {
@@ -281,6 +334,8 @@ export default function HomePage() {
             next={displayedNext}
             outcome={displayedState?.outcome ?? snapshot.state.outcome}
             checkpointId={(viewed ?? snapshot).checkpointId}
+            onSelectNode={handleSelectNode}
+            selectedNode={selectedNode}
           />
 
           {isViewingHistory && !editMode && (
@@ -296,12 +351,39 @@ export default function HomePage() {
             </p>
           )}
 
-          {displayedState && (
-            <StatePanel
-              state={displayedState}
-              editable={editMode}
-              onFieldChange={editMode ? handleFieldChange : undefined}
-            />
+          {displayedState && editMode && visible.length > 0 && (
+            // Edit mode shows every produced-so-far stage stacked at once,
+            // matching the pre-existing multi-field-patch behavior (`patch`
+            // can carry several fields into one `/fork` call) — the tab
+            // strip's one-at-a-time view is for browsing only.
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+              {visible.map((tab) => (
+                <RunTabs
+                  key={tab}
+                  activeTab={tab}
+                  state={displayedState}
+                  editable
+                  onFieldChange={handleFieldChange}
+                  onEditThisStage={startEdit}
+                />
+              ))}
+            </div>
+          )}
+
+          {displayedState && !editMode && activeTab && visible.length > 0 && (
+            <>
+              <Tabs
+                tabs={visible.map((id) => ({ id, label: TAB_LABELS[id] }))}
+                activeId={activeTab}
+                onChange={(id) => setActiveTab(id as TabId)}
+              />
+              <RunTabs
+                activeTab={activeTab}
+                state={displayedState}
+                editable={false}
+                onEditThisStage={startEdit}
+              />
+            </>
           )}
 
           {advanceLock.lockedElsewhere && (
@@ -310,58 +392,71 @@ export default function HomePage() {
             </p>
           )}
 
-          {editMode ? (
-            <ActionToolbar
-              next={displayedNext}
-              outcome={displayedState?.outcome ?? "in-progress"}
-              loading={loading || advanceLock.lockedElsewhere}
-              error={error}
-              pauseBetweenStages={pauseBetweenStages}
-              autoRun={autoRun}
-              editing={{
-                active: true,
-                canSave: Object.keys(patch).length > 0 && Object.keys(patchErrors).length === 0,
-                onStart: startEdit,
-                onSave: saveEdit,
-                onCancel: cancelEdit,
-              }}
-              onStep={() => guardedStep("step")}
-              onNewSession={reset}
-            />
-          ) : pendingSave ? (
-            <UnsavedResultBanner loading={loading} onRetrySave={retrySave} />
-          ) : runningStage ? (
-            <RunningStage
-              stageName={runningStage}
-              onCancel={cancel}
-              onPause={autoRun.running ? autoRun.pause : undefined}
-            />
-          ) : isStageFailure ? (
-            <StageFailureBanner
-              failureReason={snapshot.state.failureReason}
-              loading={loading || advanceLock.lockedElsewhere}
-              sessionCapped={error?.error === "session-cap"}
-              onRetry={() => guardedStep("retry")}
-            />
-          ) : (
-            <ActionToolbar
-              next={displayedNext}
-              outcome={snapshot.state.outcome}
-              loading={loading || advanceLock.lockedElsewhere}
-              error={error}
-              pauseBetweenStages={pauseBetweenStages}
-              autoRun={autoRun}
-              editing={{
-                active: false,
-                canSave: false,
-                onStart: startEdit,
-                onSave: saveEdit,
-                onCancel: cancelEdit,
-              }}
-              onStep={() => guardedStep("step")}
-              onNewSession={reset}
-            />
-          )}
+          <div
+            style={{
+              position: "sticky",
+              bottom: 0,
+              zIndex: 1,
+              padding: "var(--space-3) var(--space-4)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              background: "var(--color-surface)",
+              boxShadow: "var(--shadow-md)",
+            }}
+          >
+            {editMode ? (
+              <ActionToolbar
+                next={displayedNext}
+                outcome={displayedState?.outcome ?? "in-progress"}
+                loading={loading || advanceLock.lockedElsewhere}
+                error={error}
+                pauseBetweenStages={pauseBetweenStages}
+                autoRun={autoRun}
+                editing={{
+                  active: true,
+                  canSave: Object.keys(patch).length > 0 && Object.keys(patchErrors).length === 0,
+                  onStart: startEdit,
+                  onSave: saveEdit,
+                  onCancel: cancelEdit,
+                }}
+                onStep={() => guardedStep("step")}
+                onNewSession={reset}
+              />
+            ) : pendingSave ? (
+              <UnsavedResultBanner loading={loading} onRetrySave={retrySave} />
+            ) : runningStage ? (
+              <RunningStage
+                stageName={runningStage}
+                onCancel={cancel}
+                onPause={autoRun.running ? autoRun.pause : undefined}
+              />
+            ) : isStageFailure ? (
+              <StageFailureBanner
+                failureReason={snapshot.state.failureReason}
+                loading={loading || advanceLock.lockedElsewhere}
+                sessionCapped={error?.error === "session-cap"}
+                onRetry={() => guardedStep("retry")}
+              />
+            ) : (
+              <ActionToolbar
+                next={displayedNext}
+                outcome={snapshot.state.outcome}
+                loading={loading || advanceLock.lockedElsewhere}
+                error={error}
+                pauseBetweenStages={pauseBetweenStages}
+                autoRun={autoRun}
+                editing={{
+                  active: false,
+                  canSave: false,
+                  onStart: startEdit,
+                  onSave: saveEdit,
+                  onCancel: cancelEdit,
+                }}
+                onStep={() => guardedStep("step")}
+                onNewSession={reset}
+              />
+            )}
+          </div>
         </div>
       )}
     </main>

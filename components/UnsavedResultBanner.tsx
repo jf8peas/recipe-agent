@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/Button";
+
 interface UnsavedResultBannerProps {
   loading: boolean;
   onRetrySave: () => void;
@@ -22,24 +24,9 @@ export function UnsavedResultBanner({ loading, onRetrySave }: UnsavedResultBanne
       <span style={{ fontSize: "var(--text-sm)" }}>
         This step finished, but saving it failed. Your progress isn&apos;t lost — retry saving below.
       </span>
-      <button
-        type="button"
-        onClick={onRetrySave}
-        disabled={loading}
-        style={{
-          marginLeft: "auto",
-          padding: "var(--space-1) var(--space-3)",
-          borderRadius: "var(--radius-sm)",
-          border: "none",
-          background: "var(--color-accent)",
-          color: "var(--color-accent-contrast)",
-          font: "inherit",
-          cursor: loading ? "not-allowed" : "pointer",
-          opacity: loading ? 0.6 : 1,
-        }}
-      >
+      <Button variant="primary" onClick={onRetrySave} disabled={loading} style={{ marginLeft: "auto" }}>
         {loading ? "Retrying…" : "Retry save"}
-      </button>
+      </Button>
     </div>
   );
 }

@@ -5,16 +5,16 @@ recipe, with full time-travel (inspect / branch / edit / replay) over the graph'
 state history.
 
 <!-- SPECKIT START -->
-Active plan: [specs/005-agent-graph-progress/plan.md](specs/005-agent-graph-progress/plan.md) (implemented)
+Active plan: [specs/006-ui-unification/plan.md](specs/006-ui-unification/plan.md)
 
-- Spec: [specs/005-agent-graph-progress/spec.md](specs/005-agent-graph-progress/spec.md)
-- Research: [specs/005-agent-graph-progress/research.md](specs/005-agent-graph-progress/research.md)
-- Data model: [specs/005-agent-graph-progress/data-model.md](specs/005-agent-graph-progress/data-model.md)
-- UI contract: [specs/005-agent-graph-progress/contracts/agent-graph-progress-ui.md](specs/005-agent-graph-progress/contracts/agent-graph-progress-ui.md)
-- Quickstart: [specs/005-agent-graph-progress/quickstart.md](specs/005-agent-graph-progress/quickstart.md)
-- Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v3.0.0)
+- Spec: [specs/006-ui-unification/spec.md](specs/006-ui-unification/spec.md)
+- Research: [specs/006-ui-unification/research.md](specs/006-ui-unification/research.md)
+- Data model: [specs/006-ui-unification/data-model.md](specs/006-ui-unification/data-model.md)
+- UI contracts: [specs/006-ui-unification/contracts/ui-contracts.md](specs/006-ui-unification/contracts/ui-contracts.md)
+- Quickstart: [specs/006-ui-unification/quickstart.md](specs/006-ui-unification/quickstart.md)
+- Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v4.0.0 — Principle VI amended by this feature's own plan, see research R8)
 
-Prior features (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md), [specs/003-direction-selection/plan.md](specs/003-direction-selection/plan.md), [specs/004-about-page-redesign/plan.md](specs/004-about-page-redesign/plan.md). Feature 002 ("About This App" slideshow) has been fully replaced by feature 004 — see spec 004 FR-001.
+Prior features (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md), [specs/003-direction-selection/plan.md](specs/003-direction-selection/plan.md), [specs/004-about-page-redesign/plan.md](specs/004-about-page-redesign/plan.md), [specs/005-agent-graph-progress/plan.md](specs/005-agent-graph-progress/plan.md), [specs/006-ui-unification/plan.md](specs/006-ui-unification/plan.md). Feature 002 ("About This App" slideshow) has been fully replaced by feature 004 — see spec 004 FR-001.
 <!-- SPECKIT END -->
 
 ## Non-negotiables (from the constitution)
@@ -57,16 +57,19 @@ IDs.
 
 ## Current status
 
-Features 001 (Recipe Agent core), 003 (direction selection stage), and 004
-(About page redesign) are implemented; constitution at v3.0.0. Feature 002
-("About This App" slideshow) has been fully replaced by feature 004 — a
-single full-scrolling reference page with a sticky topic nav, matching
-`design/v002/about.html` — `components/AboutSlideshow.tsx` and its 5-slide
-content model are deleted; `components/about/` and a rewritten
-`lib/about-content.ts` replace them. Feature 005 (agent graph progress diagram, replacing `components/
-StageProgress.tsx`'s flat stepper with a diagram of the real 8-node graph
-topology and one run's actual path through it) is implemented —
-`lib/graph-progress.ts` (the pure derivation) and `components/
-AgentGraphProgress.tsx` replace it. Local work (features 001, 003, 004,
-005) is verified (`tsc`/`vitest`/`build`/`playwright` all green) but not yet
+Features 001 (Recipe Agent core), 003 (direction selection stage), 004
+(About page redesign), 005 (agent graph progress diagram), and 006 (UI
+unification) are implemented; constitution at **v4.0.0** (Principle VI
+amended by feature 006's own plan — the three-panel session layout it
+described was never actually shipped; replaced with the single-column/
+graph/tabs/sticky-action-row layout design/v003/ establishes). Feature 002
+("About This App" slideshow) has been fully replaced by feature 004.
+Feature 006 delivered: one two-state `AppHeader` (app/about), a rebuilt
+two-row `AgentGraphProgress` synced bidirectionally with stage tabs
+(`RunTabs`/`Tabs`), a shared `components/ui/` primitives layer (`Button`,
+`Card`, `ListRow`, `TextArea`, `Spinner`, `Toggle`, `Tabs`) used across
+every screen including the About page, and a new "RA" mark/favicon
+(`app/icon.svg`) — per `design/v003/`. `components/StatePanel.tsx` is
+deleted. Local work (features 001, 003, 004, 005, 006) is verified
+(`tsc`/`vitest`/`build`/`playwright` all green, twice in a row) but not yet
 deployed to Vercel.

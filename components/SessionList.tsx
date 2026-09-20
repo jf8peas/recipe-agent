@@ -1,4 +1,6 @@
 import type { LocalSessionEntry } from "@/hooks/useSessionList";
+import { Button } from "@/components/ui/Button";
+import { ListRow } from "@/components/ui/ListRow";
 
 interface SessionListProps {
   entries: LocalSessionEntry[];
@@ -13,76 +15,23 @@ interface SessionListProps {
 export function SessionList({ entries, onOpen, onDelete, onNewSession }: SessionListProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-      <button
-        type="button"
-        onClick={onNewSession}
-        style={{
-          alignSelf: "flex-start",
-          padding: "var(--space-2) var(--space-4)",
-          borderRadius: "var(--radius-md)",
-          border: "none",
-          background: "var(--color-accent)",
-          color: "var(--color-accent-contrast)",
-          font: "inherit",
-          cursor: "pointer",
-        }}
-      >
+      <Button variant="primary" onClick={onNewSession} style={{ alignSelf: "flex-start" }}>
         Start a new session
-      </button>
+      </Button>
 
       {entries.length === 0 ? (
         <p style={{ margin: 0, color: "var(--color-text-muted)" }}>No sessions yet.</p>
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
           {entries.map((entry) => (
-            <li
+            <ListRow
               key={entry.sessionId}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--space-3)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-md)",
-                padding: "var(--space-3)",
-                background: "var(--color-surface)",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => onOpen(entry.sessionId)}
-                style={{
-                  flex: 1,
-                  textAlign: "left",
-                  background: "none",
-                  border: "none",
-                  font: "inherit",
-                  cursor: "pointer",
-                  color: "var(--color-text)",
-                  padding: 0,
-                }}
-              >
-                <div style={{ fontWeight: 600 }}>{entry.title ?? "Untitled session"}</div>
-                <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
-                  {new Date(entry.lastOpened).toLocaleString()}
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => onDelete(entry.sessionId)}
-                aria-label={`Delete session ${entry.title ?? entry.sessionId}`}
-                style={{
-                  padding: "var(--space-1) var(--space-3)",
-                  borderRadius: "var(--radius-sm)",
-                  border: "1px solid var(--color-border)",
-                  background: "transparent",
-                  color: "var(--color-danger)",
-                  font: "inherit",
-                  cursor: "pointer",
-                }}
-              >
-                Delete
-              </button>
-            </li>
+              title={entry.title ?? "Untitled session"}
+              subtitle={new Date(entry.lastOpened).toLocaleString()}
+              onOpen={() => onOpen(entry.sessionId)}
+              onDelete={() => onDelete(entry.sessionId)}
+              deleteLabel={`Delete session ${entry.title ?? entry.sessionId}`}
+            />
           ))}
         </ul>
       )}

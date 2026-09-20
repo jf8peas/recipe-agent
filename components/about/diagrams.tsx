@@ -112,14 +112,30 @@ export function TimeTravelDiagram() {
   );
 }
 
+// Two-row "boustrophedon" layout (spec 006 US5, T025) matching the live
+// `AgentGraphProgress` component's visual language (research R2, T015) —
+// row 1 reads left-to-right, row 2 sits directly below and reads
+// right-to-left so each row-2 shape shares its column with the row-1 one
+// it's "under". Same 7 named nodes + 2 decision diamonds + 2 generic "End"
+// boxes as before (the aria-label's own content is unchanged) — only the
+// arrangement changed, so every edge is now a straight line.
+const AGD_COL_1 = 74; // parseIngredients / finalize
+const AGD_COL_DIAMOND = 194; // usable? / blocking & budget?
+const AGD_COL_2 = 314; // proposeDirections / critique
+const AGD_COL_3 = 434; // selectDirection / draftRecipe
+const AGD_ROW_1_Y = 70;
+const AGD_ROW_2_Y = 250;
+const AGD_ERROR_END_Y = 160;
+const AGD_BOTTOM_Y = 340; // refine and the main End both hang here
+
 export function AgentGraphDiagram() {
   return responsiveSvgWrap(
     undefined,
     <svg
-      viewBox="0 0 950 230"
+      viewBox="0 0 508 400"
       role="img"
       aria-label="Seven agent nodes — parseIngredients, proposeDirections, selectDirection, draftRecipe, critique, refine, finalize — connected by two conditional edges (usable?, blocking and budget?) that route to an error End, a refine loop, or the main End."
-      style={{ display: "block", width: "100%", height: "auto", minWidth: "700px" }}
+      style={{ display: "block", width: "100%", height: "auto", minWidth: "420px" }}
     >
       <defs>
         <marker id="g-arrow" markerWidth={8} markerHeight={8} refX={6} refY={4} orient="auto">
@@ -130,55 +146,59 @@ export function AgentGraphDiagram() {
         </marker>
       </defs>
 
-      <line x1={84} y1={70} x2={133} y2={70} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
-      <line x1={167} y1={70} x2={226} y2={70} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
-      <line x1={294} y1={70} x2={336} y2={70} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
-      <line x1={404} y1={70} x2={446} y2={70} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
-      <line x1={514} y1={70} x2={556} y2={70} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
-      <line x1={624} y1={70} x2={673} y2={70} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
-      <line x1={707} y1={70} x2={766} y2={70} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
-      <line x1={834} y1={70} x2={870} y2={70} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
+      {/* Row 1: parseIngredients -> usable? -> proposeDirections -> selectDirection */}
+      <line x1={AGD_COL_1} y1={AGD_ROW_1_Y} x2={AGD_COL_2} y2={AGD_ROW_1_Y} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
+      <line x1={AGD_COL_2} y1={AGD_ROW_1_Y} x2={AGD_COL_3} y2={AGD_ROW_1_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
+      {/* Join connector: selectDirection (row 1) -> draftRecipe (row 2) */}
+      <line x1={AGD_COL_3} y1={AGD_ROW_1_Y} x2={AGD_COL_3} y2={AGD_ROW_2_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
+      {/* Row 2: draftRecipe -> critique -> blocking? -> finalize */}
+      <line x1={AGD_COL_3} y1={AGD_ROW_2_Y} x2={AGD_COL_2} y2={AGD_ROW_2_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
+      <line x1={AGD_COL_2} y1={AGD_ROW_2_Y} x2={AGD_COL_1} y2={AGD_ROW_2_Y} style={{ stroke: muted, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow)" />
+      {/* finalize -> the main End, hanging below it */}
+      <line x1={AGD_COL_1} y1={AGD_ROW_2_Y} x2={AGD_COL_1} y2={AGD_BOTTOM_Y} style={{ stroke: muted, strokeWidth: 2 }} markerEnd="url(#g-arrow)" />
 
-      <line x1={150} y1={87} x2={150} y2={155} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
-      <line x1={683} y1={86} x2={640} y2={138} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
-      <line x1={617} y1={138} x2={603} y2={102} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
+      {/* usable?'s dead-end branch to an error End */}
+      <line x1={AGD_COL_DIAMOND} y1={AGD_ROW_1_Y} x2={AGD_COL_DIAMOND} y2={AGD_ERROR_END_Y} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
+      {/* blocking & budget?'s branch down to refine, and refine's loop-back to critique */}
+      <line x1={AGD_COL_DIAMOND} y1={AGD_ROW_2_Y} x2={AGD_COL_DIAMOND} y2={AGD_BOTTOM_Y} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
+      <line x1={AGD_COL_DIAMOND} y1={AGD_BOTTOM_Y} x2={AGD_COL_2} y2={AGD_ROW_2_Y} style={{ stroke: danger, strokeWidth: 2, strokeDasharray: "4,4" }} markerEnd="url(#g-arrow-danger)" />
 
-      <circle cx={50} cy={70} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
-      <text x={50} y={66} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>parse</text>
-      <text x={50} y={78} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>Ingredients</text>
+      <circle cx={AGD_COL_1} cy={AGD_ROW_1_Y} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
+      <text x={AGD_COL_1} y={AGD_ROW_1_Y - 4} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>parse</text>
+      <text x={AGD_COL_1} y={AGD_ROW_1_Y + 8} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>Ingredients</text>
 
-      <polygon points="150,53 167,70 150,87 133,70" style={{ fill: `color-mix(in srgb, ${warning} 20%, ${surface})`, stroke: warning, strokeWidth: 2 }} />
-      <text x={150} y={112} textAnchor="middle" style={{ font: "700 10px var(--font-sans)", fill: warning }}>usable?</text>
+      <polygon points={`${AGD_COL_DIAMOND},${AGD_ROW_1_Y - 17} ${AGD_COL_DIAMOND + 17},${AGD_ROW_1_Y} ${AGD_COL_DIAMOND},${AGD_ROW_1_Y + 17} ${AGD_COL_DIAMOND - 17},${AGD_ROW_1_Y}`} style={{ fill: `color-mix(in srgb, ${warning} 20%, ${surface})`, stroke: warning, strokeWidth: 2 }} />
+      <text x={AGD_COL_DIAMOND} y={AGD_ROW_1_Y - 17 - 8} textAnchor="middle" style={{ font: "700 10px var(--font-sans)", fill: warning }}>usable?</text>
 
-      <circle cx={260} cy={70} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
-      <text x={260} y={66} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>propose</text>
-      <text x={260} y={78} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>Directions</text>
+      <circle cx={AGD_COL_2} cy={AGD_ROW_1_Y} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
+      <text x={AGD_COL_2} y={AGD_ROW_1_Y - 4} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>propose</text>
+      <text x={AGD_COL_2} y={AGD_ROW_1_Y + 8} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>Directions</text>
 
-      <circle cx={370} cy={70} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
-      <text x={370} y={66} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>select</text>
-      <text x={370} y={78} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>Direction</text>
+      <circle cx={AGD_COL_3} cy={AGD_ROW_1_Y} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
+      <text x={AGD_COL_3} y={AGD_ROW_1_Y - 4} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>select</text>
+      <text x={AGD_COL_3} y={AGD_ROW_1_Y + 8} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>Direction</text>
 
-      <circle cx={480} cy={70} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
-      <text x={480} y={66} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>draft</text>
-      <text x={480} y={78} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>Recipe</text>
+      <circle cx={AGD_COL_3} cy={AGD_ROW_2_Y} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
+      <text x={AGD_COL_3} y={AGD_ROW_2_Y - 4} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>draft</text>
+      <text x={AGD_COL_3} y={AGD_ROW_2_Y + 8} textAnchor="middle" style={{ font: "700 10px var(--font-mono)", fill: text }}>Recipe</text>
 
-      <circle cx={590} cy={70} r={34} style={{ fill: `color-mix(in srgb, ${danger} 10%, ${surface})`, stroke: danger, strokeWidth: 2 }} />
-      <text x={590} y={74} textAnchor="middle" style={{ font: "700 11px var(--font-mono)", fill: text }}>critique</text>
+      <circle cx={AGD_COL_2} cy={AGD_ROW_2_Y} r={34} style={{ fill: `color-mix(in srgb, ${danger} 10%, ${surface})`, stroke: danger, strokeWidth: 2 }} />
+      <text x={AGD_COL_2} y={AGD_ROW_2_Y + 4} textAnchor="middle" style={{ font: "700 11px var(--font-mono)", fill: text }}>critique</text>
 
-      <polygon points="690,53 707,70 690,87 673,70" style={{ fill: `color-mix(in srgb, ${warning} 20%, ${surface})`, stroke: warning, strokeWidth: 2 }} />
-      <text x={690} y={112} textAnchor="middle" style={{ font: "700 10px var(--font-sans)", fill: warning }}>blocking &amp; budget?</text>
+      <polygon points={`${AGD_COL_DIAMOND},${AGD_ROW_2_Y - 17} ${AGD_COL_DIAMOND + 17},${AGD_ROW_2_Y} ${AGD_COL_DIAMOND},${AGD_ROW_2_Y + 17} ${AGD_COL_DIAMOND - 17},${AGD_ROW_2_Y}`} style={{ fill: `color-mix(in srgb, ${warning} 20%, ${surface})`, stroke: warning, strokeWidth: 2 }} />
+      <text x={AGD_COL_DIAMOND} y={AGD_ROW_2_Y - 17 - 8} textAnchor="middle" style={{ font: "700 10px var(--font-sans)", fill: warning }}>blocking &amp; budget?</text>
 
-      <circle cx={800} cy={70} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
-      <text x={800} y={74} textAnchor="middle" style={{ font: "700 11px var(--font-mono)", fill: text }}>finalize</text>
+      <circle cx={AGD_COL_1} cy={AGD_ROW_2_Y} r={34} style={{ fill: `color-mix(in srgb, ${accent} 10%, ${surface})`, stroke: accent, strokeWidth: 2 }} />
+      <text x={AGD_COL_1} y={AGD_ROW_2_Y + 4} textAnchor="middle" style={{ font: "700 11px var(--font-mono)", fill: text }}>finalize</text>
 
-      <rect x={870} y={55} width={60} height={30} rx={15} style={{ fill: text }} />
-      <text x={900} y={75} textAnchor="middle" style={{ font: "600 12px var(--font-sans)", fill: bg }}>End</text>
+      <rect x={AGD_COL_1 - 30} y={AGD_BOTTOM_Y - 15} width={60} height={30} rx={15} style={{ fill: text }} />
+      <text x={AGD_COL_1} y={AGD_BOTTOM_Y + 5} textAnchor="middle" style={{ font: "600 12px var(--font-sans)", fill: bg }}>End</text>
 
-      <circle cx={630} cy={170} r={34} style={{ fill: `color-mix(in srgb, ${danger} 10%, ${surface})`, stroke: danger, strokeWidth: 2 }} />
-      <text x={630} y={174} textAnchor="middle" style={{ font: "700 11px var(--font-mono)", fill: text }}>refine</text>
+      <circle cx={AGD_COL_DIAMOND} cy={AGD_BOTTOM_Y} r={34} style={{ fill: `color-mix(in srgb, ${danger} 10%, ${surface})`, stroke: danger, strokeWidth: 2 }} />
+      <text x={AGD_COL_DIAMOND} y={AGD_BOTTOM_Y + 4} textAnchor="middle" style={{ font: "700 11px var(--font-mono)", fill: text }}>refine</text>
 
-      <rect x={120} y={155} width={60} height={30} rx={15} style={{ fill: danger }} />
-      <text x={150} y={175} textAnchor="middle" style={{ font: "600 12px var(--font-sans)", fill: "#fff" }}>End</text>
+      <rect x={AGD_COL_DIAMOND - 30} y={AGD_ERROR_END_Y - 15} width={60} height={30} rx={15} style={{ fill: danger }} />
+      <text x={AGD_COL_DIAMOND} y={AGD_ERROR_END_Y + 5} textAnchor="middle" style={{ font: "600 12px var(--font-sans)", fill: accentContrast }}>End</text>
     </svg>,
   );
 }

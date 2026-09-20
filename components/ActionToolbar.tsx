@@ -1,4 +1,5 @@
 import type { SessionApiError } from "@/hooks/useSession";
+import { Button } from "@/components/ui/Button";
 
 interface AutoRunControls {
   running: boolean;
@@ -58,17 +59,12 @@ export function ActionToolbar({
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
         <div style={{ display: "flex", gap: "var(--space-3)" }}>
-          <button
-            type="button"
-            onClick={editing.onSave}
-            disabled={loading || !editing.canSave}
-            style={buttonStyle(loading || !editing.canSave)}
-          >
+          <Button variant="primary" onClick={editing.onSave} disabled={loading || !editing.canSave}>
             {loading ? "Saving…" : "Try this version"}
-          </button>
-          <button type="button" onClick={editing.onCancel} disabled={loading} style={secondaryButtonStyle(loading)}>
+          </Button>
+          <Button variant="secondary" onClick={editing.onCancel} disabled={loading}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -84,70 +80,34 @@ export function ActionToolbar({
 
       <div style={{ display: "flex", gap: "var(--space-3)" }}>
         {!done && pauseBetweenStages && (
-          <button
-            type="button"
-            onClick={onStep}
-            disabled={loading || next.length === 0}
-            style={buttonStyle(loading || next.length === 0)}
-          >
+          <Button variant="primary" onClick={onStep} disabled={loading || next.length === 0}>
             {loading ? "Working…" : `Step (${next[0] ?? "…"})`}
-          </button>
+          </Button>
         )}
 
         {!done && !pauseBetweenStages && !autoRun.running && (
-          <button
-            type="button"
-            onClick={autoRun.play}
-            disabled={loading || next.length === 0}
-            style={buttonStyle(loading || next.length === 0)}
-          >
+          <Button variant="primary" onClick={autoRun.play} disabled={loading || next.length === 0}>
             Play
-          </button>
+          </Button>
         )}
         {!done && !pauseBetweenStages && autoRun.running && (
-          <button type="button" onClick={autoRun.pause} style={buttonStyle(false)}>
+          <Button variant="primary" onClick={autoRun.pause}>
             Pause
-          </button>
+          </Button>
         )}
 
         {done && (
-          <button type="button" onClick={onNewSession} style={buttonStyle(false)}>
+          <Button variant="primary" onClick={onNewSession}>
             Start a new session
-          </button>
+          </Button>
         )}
 
         {!sessionCapped && (
-          <button type="button" onClick={editing.onStart} disabled={loading} style={secondaryButtonStyle(loading)}>
+          <Button variant="secondary" onClick={editing.onStart} disabled={loading}>
             Edit
-          </button>
+          </Button>
         )}
       </div>
     </div>
   );
-}
-
-function buttonStyle(disabled: boolean) {
-  return {
-    padding: "var(--space-2) var(--space-4)",
-    borderRadius: "var(--radius-md)",
-    border: "none",
-    background: "var(--color-accent)",
-    color: "var(--color-accent-contrast)",
-    font: "inherit",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.6 : 1,
-  } as const;
-}
-
-function secondaryButtonStyle(disabled: boolean) {
-  return {
-    padding: "var(--space-2) var(--space-4)",
-    borderRadius: "var(--radius-md)",
-    border: "1px solid var(--color-border)",
-    background: "transparent",
-    color: "var(--color-text)",
-    font: "inherit",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.6 : 1,
-  } as const;
 }

@@ -1,0 +1,97 @@
+/*
+ * Design tokens — the single source of visual values (constitution Principle
+ * VI). No component may hard-code a color, spacing, radius, or font-size that
+ * duplicates one of these.
+ */
+:root {
+  /* Color: warm, neutral base + one accent */
+  --color-bg: #faf8f5;
+  --color-surface: #ffffff;
+  --color-border: #e4ddd3;
+  --color-text: #241f1a;
+  --color-text-muted: #6b6156;
+  --color-accent: #b5502f;
+  --color-accent-contrast: #ffffff;
+  --color-success: #2f6d4f;
+  --color-warning: #a06a00;
+  --color-danger: #a3312a;
+  --color-focus: #1a5fb4;
+
+  /* Timeline entry kinds (text/icon carries meaning too — never color alone) */
+  --color-kind-normal: var(--color-text-muted);
+  --color-kind-finalized: var(--color-success);
+  --color-kind-ingredient-error: var(--color-danger);
+  --color-kind-stage-failure: var(--color-warning);
+
+  /* Spacing scale (4px base) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Type scale */
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-3xl: 2.75rem;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+
+  /* Layout */
+  --header-height: 56px;
+  --panel-left-width: 280px;
+  --panel-right-width: 260px;
+
+  /* Stacking */
+  --z-overlay: 100;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #1c1815;
+    --color-surface: #262019;
+    --color-border: #3a322a;
+    --color-text: #f2ede6;
+    --color-text-muted: #b3a99c;
+    --color-accent: #e0794f;
+    --color-accent-contrast: #1c1815;
+    --color-success: #6fcf9b;
+    --color-warning: #e0b04a;
+    --color-danger: #e2716a;
+    --color-focus: #6fa8ea;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}

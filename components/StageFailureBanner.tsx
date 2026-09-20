@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/Button";
+
 interface StageFailureBannerProps {
   failureReason: string | null;
   loading: boolean;
@@ -26,23 +28,9 @@ export function StageFailureBanner({ failureReason, loading, sessionCapped, onRe
       <p style={{ margin: 0, fontWeight: 600, color: "var(--color-kind-stage-failure)" }}>Stage failed</p>
       {failureReason && <p style={{ margin: 0, fontSize: "var(--text-sm)" }}>{failureReason}</p>}
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-        <button
-          type="button"
-          onClick={onRetry}
-          disabled={loading || sessionCapped}
-          style={{
-            padding: "var(--space-1) var(--space-3)",
-            borderRadius: "var(--radius-sm)",
-            border: "none",
-            background: "var(--color-accent)",
-            color: "var(--color-accent-contrast)",
-            font: "inherit",
-            cursor: loading || sessionCapped ? "not-allowed" : "pointer",
-            opacity: loading || sessionCapped ? 0.6 : 1,
-          }}
-        >
+        <Button variant="primary" onClick={onRetry} disabled={loading || sessionCapped}>
           {loading ? "Retrying…" : "Retry"}
-        </button>
+        </Button>
         <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
           {sessionCapped
             ? "This session has reached its step limit — start a new session to continue."

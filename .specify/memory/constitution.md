@@ -1,6 +1,49 @@
 <!--
 Sync Impact Report
 ==================
+Version change: 3.0.0 → 4.0.0
+Rationale: MAJOR — backward-incompatible redefinition of Principle VI's
+application-layout mandate. The fixed three-panel structure (left branch-tree
+timeline / center editable state view / right action controls) was never
+actually implemented by the shipped app — confirmed during feature 006
+planning that `app/page.tsx` has always been a single stacked column, not
+three panels; this predates the amendment, not something feature 006
+introduces. The user, as this constitution's maintainer, approved a design
+handoff (design/v003/) that is explicitly a mobile-first single column at
+every viewport width: a history/branch-timeline disclosure, the agent-graph
+diagram, one tab per completed stage's output (synced bidirectionally with
+the graph's own nodes), and a persistent bottom action row. This redefines
+what "the application layout" IS — a genuine redefinition, not a wording
+clarification, so it's MAJOR per this constitution's own versioning policy,
+same reasoning as the 3.0.0 amendment below.
+
+Modified principles:
+  - VI. Session & UI Boundaries — replaced the three-panel-structure bullet
+    with the single-column, stage-tabbed, sticky-action-row layout description
+    (feature 006, design/v003/) — no separate desktop three-column arrangement
+    at any width; only the agent-graph diagram's own node size increases on a
+    wider viewport.
+
+Modified sections: none beyond the principle text itself.
+
+Added sections: none
+Removed sections: none
+
+Templates requiring updates:
+  - specs/006-ui-unification/{spec,plan,tasks}.md   ⚠ pending — updated
+    alongside this amendment in the same `/speckit-plan` pass
+  - CLAUDE.md                                        ⚠ pending — same pass
+
+Prior amendments: 3.0.0 MAJOR (one-thread-per-branch redefinition, Principles
+I & IV — see below); 2.0.1 PATCH (Principle VI → device-private session
+model); 2.0.0 MAJOR (Principle I LLM integration → OpenRouter).
+
+Follow-up TODOs: none. Ratification date preserved (2026-09-01); Last Amended
+2026-09-20.
+
+---
+Prior Sync Impact Report (3.0.0), preserved for history:
+
 Version change: 2.0.1 → 3.0.0
 Rationale: MAJOR — backward-incompatible correction of a factual claim in
 Principles I and IV. Both asserted that a single LangGraph `thread_id`'s own
@@ -13,48 +56,16 @@ drops the write (a channel-version collision in that package's blob storage —
 confirmed absent from `MemorySaver`, so it is specific to that checkpointer
 package, not LangGraph core). A time-travel product forks from
 already-branched-from checkpoints constantly, so this is load-bearing, not an
-edge case. Fix: **each branch is its own LangGraph thread**, seeded by replaying
+edge case. Fix: each branch is its own LangGraph thread, seeded by replaying
 the parent branch's recorded outputs (safe — a freshly-seeded thread never
 collides) up to the fork point. The app's own `branches` table now tracks
 cross-thread relationships; the checkpointer remains authoritative only for a
-single branch's own linear history. This changes what "the branch tree" IS, so
-it is a redefinition, not a clarification — MAJOR.
+single branch's own linear history.
 
-Modified principles:
-  - I. Fixed Technology Stack — "Persistence / checkpointing" bullet narrowed:
-    the checkpointer is the source of truth for one branch's history, not the
-    whole tree; added a pointer to Principle IV for the branching rule.
-  - IV. Time-Travel State Integrity — replaced the "branch tree MUST be
-    reconstructed from checkpoint `parentConfig`" bullet with the confirmed
-    one-thread-per-branch rule, the fork-must-seed-a-new-thread rule (with the
-    reason — the confirmed bug), the retry-may-reuse-the-thread rule, and the
-    cross-thread tree-reconstruction rule (per-thread `parentConfig` chains +
-    the app's own `branches` table).
-
-Modified sections:
-  - Technology & Configuration Constraints — "Checkpointer" bullet gains the
-    one-thread-per-branch rule and a pointer to Principle IV.
-  - Development Workflow & Quality Gates — review gate gains: "creates a second
-    child of an already-branched checkpoint within one thread via `updateState`
-    instead of seeding a new thread."
-
-Added sections: none
-Removed sections: none
-
-Templates requiring updates:
-  - specs/001-recipe-agent/{spec,plan,tasks,data-model,research}.md +
-    contracts/api.md + CLAUDE.md                  ⚠ pending — update alongside
-    this amendment as part of the same `/speckit-implement` pass
-  - RECOMMENDATION.md                             ⚠ pending — same pass
-  - .specify/templates/*.md                       ✅ unaffected (structural, not
-    content-specific)
-  - README.md                                     ⚠ pending (not present)
-
-Prior amendments: 2.0.1 PATCH (Principle VI → device-private session model);
-2.0.0 MAJOR (Principle I LLM integration → OpenRouter).
-
-Follow-up TODOs: none. Ratification date preserved (2026-09-01); Last Amended
-2026-09-14.
+Modified principles: I. Fixed Technology Stack (Persistence/checkpointing
+bullet narrowed); IV. Time-Travel State Integrity (one-thread-per-branch rule).
+Modified sections: Technology & Configuration Constraints (Checkpointer
+bullet); Development Workflow & Quality Gates (review gate addition).
 -->
 
 # Recipe Agent Constitution
@@ -185,16 +196,28 @@ function limit.
   only from the browser that created it (not shareable, no cross-device access).
   Introducing auth — or any cross-device/sharing mechanism — is a constitution
   amendment.
-- The application layout is a fixed three-panel structure:
-  - **Left**: vertical branch-tree timeline, built from checkpoint `parentConfig`.
-  - **Center**: editable state view for the selected checkpoint.
-  - **Right**: action controls (e.g. edit & fork, play from here, retry).
+- The running-session layout is a single, mobile-first content column, in this
+  fixed order: a history/branch-timeline disclosure (built from checkpoint
+  `parentConfig`); the agent-graph diagram, reflecting the viewed checkpoint's
+  real state; one tab per stage that has produced output so far, each holding
+  that stage's own (editable, where applicable) state view; and a persistent
+  action row (step/play/edit/cancel/retry, whichever apply) that stays
+  reachable without scrolling regardless of window height or which tab is
+  active. Selecting a graph node selects its corresponding tab, and vice
+  versa. There is no separate three-column desktop arrangement — the graph
+  and the tab content stack vertically at every supported viewport width;
+  only the graph's own node size may increase on a wider viewport.
 - Design tokens (color, spacing, type scale, radii) live in a single shared
   source consumed by the whole UI. Component-local hard-coded style values that
   duplicate a token are prohibited.
 
 Rationale: A fixed shell keeps the state/branch/replay interactions legible and
-lets the visual design be applied without re-architecting the layout.
+lets the visual design be applied without re-architecting the layout. The
+single-column/tabbed shape (superseding the original three-panel design,
+which the shipped app never actually implemented) keeps that same legibility
+goal while working at phone width first — the tab/node sync keeps the
+graph-as-map-of-the-run relationship the three-panel design was also reaching
+for, without requiring desktop-width screen real estate to do it.
 
 ## Technology & Configuration Constraints
 
@@ -259,4 +282,4 @@ lets the visual design be applied without re-architecting the layout.
   repo, the first command that needs one MUST create it in a constitution-aligned
   form.
 
-**Version**: 3.0.0 | **Ratified**: 2026-09-01 | **Last Amended**: 2026-09-14
+**Version**: 4.0.0 | **Ratified**: 2026-09-01 | **Last Amended**: 2026-09-20

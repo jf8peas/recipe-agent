@@ -6,6 +6,20 @@ import type { State } from "./agent/state";
  * 005) — the same 8-node, 2-decision-point topology as `components/about/
  * diagrams.tsx`'s `AgentGraphDiagram`, at coordinates sized for a compact,
  * inline diagram rather than a full-width reference page (research R3).
+ *
+ * Coordinates are a two-row "boustrophedon" layout (spec 006 US2,
+ * data-model.md § 3): row 1 reads left-to-right (parseIngredients →
+ * usable? → proposeDirections → selectDirection), row 2 sits directly
+ * below and reads right-to-left (draftRecipe → critique → blocking? →
+ * finalize) so each row-2 node shares its column (x) with the row-1 node
+ * it's "under" — selectDirection/draftRecipe, proposeDirections/critique,
+ * parseIngredients/finalize, and both decision diamonds share one column.
+ * This makes the join connector (selectDirection → draftRecipe) and the
+ * main-path edges within each row simple straight lines with no special
+ * routing, and keeps `usable?`'s dead-end branch to `ingredientError` and
+ * `blockingAndBudget?`'s to `refine` visually stacked between the rows —
+ * every edge in `GRAPH_EDGES` is still just a straight line between two
+ * fixed points (research R2); only the coordinate values changed.
  */
 
 export type GraphNodeName =
@@ -26,21 +40,35 @@ export interface GraphNodeLayout {
   kind: "node" | "terminal";
   x: number;
   y: number;
+  /** Which logical row this node sits in (spec 006 US2, data-model.md § 3).
+   * `ingredientError` reads as row 1's dead-end branch (it hangs off row
+   * 1's `usable?` diamond); `refine` reads as row 2's (it hangs off row
+   * 2's `blockingAndBudget?` diamond and loops back up to `critique`). */
+  row: 1 | 2;
 }
+
+// Column x-coordinates shared between the two rows so row-2 nodes align
+// directly under their row-1 counterpart (see module-level comment above).
+const COL_1 = 90; // parseIngredients / finalize
+const COL_DIAMOND = 200; // usable? / blockingAndBudget?
+const COL_2 = 310; // proposeDirections / critique
+const COL_3 = 420; // selectDirection / draftRecipe
+const ROW_1_Y = 70;
+const ROW_2_Y = 230;
 
 // Declared in natural graph-flow reading order (not layout/z-order) — this
 // is also the order the accessible text summary lists nodes in
 // (`describeRunPath` in `components/AgentGraphProgress.tsx`), so it should
 // read naturally rather than in some incidental internal order.
 export const GRAPH_NODES: GraphNodeLayout[] = [
-  { name: "parseIngredients", kind: "node", x: 35, y: 45 },
-  { name: "proposeDirections", kind: "node", x: 175, y: 45 },
-  { name: "selectDirection", kind: "node", x: 245, y: 45 },
-  { name: "draftRecipe", kind: "node", x: 315, y: 45 },
-  { name: "critique", kind: "node", x: 385, y: 45 },
-  { name: "refine", kind: "node", x: 455, y: 150 },
-  { name: "finalize", kind: "terminal", x: 525, y: 45 },
-  { name: "ingredientError", kind: "terminal", x: 105, y: 150 },
+  { name: "parseIngredients", kind: "node", x: COL_1, y: ROW_1_Y, row: 1 },
+  { name: "proposeDirections", kind: "node", x: COL_2, y: ROW_1_Y, row: 1 },
+  { name: "selectDirection", kind: "node", x: COL_3, y: ROW_1_Y, row: 1 },
+  { name: "draftRecipe", kind: "node", x: COL_3, y: ROW_2_Y, row: 2 },
+  { name: "critique", kind: "node", x: COL_2, y: ROW_2_Y, row: 2 },
+  { name: "refine", kind: "node", x: COL_DIAMOND, y: 310, row: 2 },
+  { name: "finalize", kind: "terminal", x: COL_1, y: ROW_2_Y, row: 2 },
+  { name: "ingredientError", kind: "terminal", x: COL_DIAMOND, y: 150, row: 1 },
 ];
 
 export interface DecisionPointLayout {
@@ -55,15 +83,15 @@ export interface DecisionPointLayout {
 export const DECISION_POINTS: DecisionPointLayout[] = [
   {
     id: "usable",
-    x: 105,
-    y: 45,
+    x: COL_DIAMOND,
+    y: ROW_1_Y,
     after: "parseIngredients",
     routesTo: ["proposeDirections", "ingredientError"],
   },
   {
     id: "blockingAndBudget",
-    x: 455,
-    y: 45,
+    x: COL_DIAMOND,
+    y: ROW_2_Y,
     after: "critique",
     routesTo: ["finalize", "refine"],
   },

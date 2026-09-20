@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent } from "react";
+import { AppHeader } from "@/components/AppHeader";
 import {
   AgentGraphSection,
   ApiSection,
@@ -25,41 +26,7 @@ export interface AboutPageProps {
   onClose: () => void;
 }
 
-interface NavLink {
-  href: string;
-  label: string;
-}
-
-/** The exact 10-entry nav list design/v002/about.html's own <nav> exposes
- * (research R5, spec.md Assumptions) — the cover, author, time-travel,
- * "under the hood" divider, prompts, and closing sections are reached by
- * scrolling only. */
-const NAV_LINKS: NavLink[] = [
-  { href: "pitch", label: "Overview" },
-  { href: "journey", label: "Using it" },
-  { href: "architecture", label: "Architecture" },
-  { href: "agent-graph", label: "Agent graph" },
-  { href: "state", label: "State & persistence" },
-  { href: "branching", label: "Branching" },
-  { href: "data-model", label: "Data model" },
-  { href: "repo", label: "Repo" },
-  { href: "api", label: "API" },
-  { href: "principles", label: "Principles" },
-];
-
 const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-const visuallyHiddenStyle: CSSProperties = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: "hidden",
-  clip: "rect(0,0,0,0)",
-  whiteSpace: "nowrap",
-  border: 0,
-};
 
 /**
  * Full-page "About This App" reference page (spec 004) — a single scrolling
@@ -69,14 +36,12 @@ const visuallyHiddenStyle: CSSProperties = {
  * entirely in favor of a sticky topic nav + continuous scroll.
  */
 export function AboutPage({ open, onClose }: AboutPageProps) {
-  const [announcement, setAnnouncement] = useState("");
   const overlayRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (open) {
-      setAnnouncement("");
       previouslyFocused.current = document.activeElement as HTMLElement | null;
       mainRef.current?.focus();
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -108,14 +73,6 @@ export function AboutPage({ open, onClose }: AboutPageProps) {
     }
   }
 
-  function handleNavClick(link: NavLink) {
-    return () => {
-      const target = document.getElementById(link.href);
-      target?.focus();
-      setAnnouncement(`Jumped to: ${link.label}`);
-    };
-  }
-
   return (
     <div
       ref={overlayRef}
@@ -133,79 +90,12 @@ export function AboutPage({ open, onClose }: AboutPageProps) {
         flexDirection: "column",
       }}
     >
-      <div aria-live="polite" style={visuallyHiddenStyle}>
-        {announcement}
-      </div>
-
-      <header
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 1,
-          minHeight: "var(--header-height)",
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "var(--space-2)",
-          padding: "var(--space-2) var(--space-4)",
-          borderBottom: "1px solid var(--color-border)",
-          background: "var(--color-surface)",
-        }}
-      >
-        <strong style={{ fontSize: "var(--text-lg)" }}>Recipe Agent — how it works</strong>
-
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: "var(--space-4)",
-            rowGap: "var(--space-2)",
-          }}
-        >
-          <nav
-            aria-label="Page sections"
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "var(--space-3)",
-              fontSize: "var(--text-sm)",
-            }}
-          >
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={`#${link.href}`}
-                onClick={handleNavClick(link)}
-                style={{ color: "var(--color-text-muted)", textDecoration: "none" }}
-              >
-                {link.label}
-              </a>
-            ))}
-          </nav>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              font: "inherit",
-              fontSize: "var(--text-sm)",
-              color: "var(--color-accent-contrast)",
-              background: "var(--color-accent)",
-              border: "1px solid var(--color-accent)",
-              borderRadius: "var(--radius-md)",
-              padding: "var(--space-1) var(--space-3)",
-              cursor: "pointer",
-            }}
-          >
-            Return to App
-          </button>
-        </div>
-      </header>
+      <AppHeader mode="about" onReturn={onClose} />
 
       <main
         ref={mainRef}
         tabIndex={-1}
+        data-testid="about-page-scroll"
         style={{
           flex: 1,
           overflowY: "auto",
@@ -217,6 +107,14 @@ export function AboutPage({ open, onClose }: AboutPageProps) {
           margin: "0 auto",
           padding: "var(--space-8) var(--space-4)",
           boxSizing: "border-box",
+          // Thin, unobtrusive scrollbar (Firefox) and no focus ring from a
+          // mouse/touch scroll (research R9) — belt-and-braces alongside
+          // the global `:focus-visible` rule, since that rule's own
+          // keyboard-vs-pointer heuristic isn't guaranteed identical across
+          // every browser engine for this specific interaction.
+          scrollbarWidth: "thin",
+          scrollbarColor: "var(--color-border) transparent",
+          outline: "none",
         }}
       >
         <CoverSection />
@@ -236,6 +134,11 @@ export function AboutPage({ open, onClose }: AboutPageProps) {
         <PrinciplesSection />
         <ClosingSection />
       </main>
+      <style>{`
+        [data-testid="about-page-scroll"]::-webkit-scrollbar { width: var(--space-2); }
+        [data-testid="about-page-scroll"]::-webkit-scrollbar-track { background: transparent; }
+        [data-testid="about-page-scroll"]::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: var(--radius-sm); }
+      `}</style>
     </div>
   );
 }

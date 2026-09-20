@@ -17,6 +17,13 @@ here) live under [specs/](specs/), governed by
   in-app "About This App" reference page (an architecture walkthrough for
   anyone using the deployed app, reachable from the header). Replaces the
   original five-slide slideshow from spec 002.
+- [specs/005-agent-graph-progress/](specs/005-agent-graph-progress/) — the
+  running-session view's agent-graph diagram, showing the true graph
+  topology and one run's real path instead of a linear step indicator.
+- [specs/006-ui-unification/](specs/006-ui-unification/) — a shared header,
+  a two-row rebuild of the graph diagram above, stage outputs as tabs
+  instead of a stacked column, and a `components/ui/` primitives layer
+  used across every screen (including the About page).
 
 This README is a reader's map to the crux of the app — the agent graph — not
 a replacement for those.
