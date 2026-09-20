@@ -99,6 +99,14 @@ const titleGroupStyle: CSSProperties = {
   gap: "var(--space-2)",
 };
 
+/** Shared header-link look — muted, no underline — matching the "about"
+ * mode's own topic-nav links; the app mode's Author/Feedback links now use
+ * this too instead of the browser's default blue-underlined `<a>` style. */
+const utilityLinkStyle: CSSProperties = {
+  color: "var(--color-text-muted)",
+  textDecoration: "none",
+};
+
 /**
  * Persistent header, shared shell for both the app's own screens and the
  * About page (spec 006 US1, FR-002–FR-004) — one component, two `mode`s,
@@ -141,7 +149,12 @@ export function AppHeader({
         <div aria-live="polite" style={visuallyHiddenStyle}>
           {announcement}
         </div>
-        <strong style={{ fontSize: "var(--text-lg)" }}>Recipe Agent — how it works</strong>
+        <div style={titleGroupStyle}>
+          <span aria-hidden="true" style={markStyle}>
+            RA
+          </span>
+          <strong style={{ fontSize: "var(--text-lg)" }}>Recipe Agent — how it works</strong>
+        </div>
         <div style={rightGroupStyle}>
           <nav
             aria-label="Page sections"
@@ -157,7 +170,7 @@ export function AppHeader({
                 key={link.href}
                 href={`#${link.href}`}
                 onClick={handleNavClick(link)}
-                style={{ color: "var(--color-text-muted)", textDecoration: "none" }}
+                style={utilityLinkStyle}
               >
                 {link.label}
               </a>
@@ -192,10 +205,10 @@ export function AppHeader({
             When off, the assistant advances through stages automatically (Auto-run).
           </span>
 
-          <a href={AUTHOR_LINKEDIN_URL} target="_blank" rel="noopener noreferrer">
+          <a href={AUTHOR_LINKEDIN_URL} target="_blank" rel="noopener noreferrer" style={utilityLinkStyle}>
             Author
           </a>
-          <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">
+          <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer" style={utilityLinkStyle}>
             Feedback
           </a>
           <Button variant="secondary" onClick={handleOpenAbout}>

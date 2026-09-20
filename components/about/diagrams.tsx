@@ -146,11 +146,11 @@ export function AgentGraphDiagram() {
       style={{ display: "block", width: "100%", height: "auto", minWidth: "420px" }}
     >
       <defs>
-        <marker id="g-arrow" markerWidth={8} markerHeight={8} refX={6} refY={4} orient="auto">
-          <path d="M0,0 L8,4 L0,8 z" style={{ fill: muted }} />
+        <marker id="g-arrow" markerWidth={7.2} markerHeight={7.2} refX={5.4} refY={3.6} orient="auto">
+          <path d="M0,0 L7.2,3.6 L0,7.2 z" style={{ fill: muted }} />
         </marker>
-        <marker id="g-arrow-danger" markerWidth={8} markerHeight={8} refX={6} refY={4} orient="auto">
-          <path d="M0,0 L8,4 L0,8 z" style={{ fill: danger }} />
+        <marker id="g-arrow-danger" markerWidth={7.2} markerHeight={7.2} refX={5.4} refY={3.6} orient="auto">
+          <path d="M0,0 L7.2,3.6 L0,7.2 z" style={{ fill: danger }} />
         </marker>
       </defs>
 

@@ -380,15 +380,22 @@ export default function HomePage() {
             </p>
           )}
 
-          <AgentGraphProgress
-            timeline={history?.timeline ?? []}
-            branchId={(viewed ?? snapshot).branchId}
-            next={displayedNext}
-            outcome={displayedState?.outcome ?? snapshot.state.outcome}
-            checkpointId={(viewed ?? snapshot).checkpointId}
-            onSelectNode={handleSelectNode}
-            selectedNode={selectedNode}
-          />
+          {/* Full-bleed: undoes <main>'s own horizontal padding just for
+              the graph, so it gets the whole viewport width to scale into
+              on narrow screens instead of losing 2*var(--space-6) to
+              padding it doesn't need (the graph has no text running to the
+              edge the way prose would). */}
+          <div style={{ marginLeft: "calc(-1 * var(--space-6))", marginRight: "calc(-1 * var(--space-6))", padding: "0 var(--space-2)" }}>
+            <AgentGraphProgress
+              timeline={history?.timeline ?? []}
+              branchId={(viewed ?? snapshot).branchId}
+              next={displayedNext}
+              outcome={displayedState?.outcome ?? snapshot.state.outcome}
+              checkpointId={(viewed ?? snapshot).checkpointId}
+              onSelectNode={handleSelectNode}
+              selectedNode={selectedNode}
+            />
+          </div>
 
           {isViewingHistory && !editMode && (
             <p role="status" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>

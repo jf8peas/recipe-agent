@@ -238,6 +238,11 @@ export function AgentGraphProgress({
   const summary = describeRunPath(path.nodes, path.takenInOrder, path.current);
 
   return (
+    // No `minWidth` on the svg below (by explicit request) — it always
+    // scales to fill whatever width this container has via `viewBox`, so
+    // it never needs to actually scroll; `overflowX: auto` stays only as a
+    // defensive fallback for a pathologically narrow container, not the
+    // primary fit strategy feature 005/006 originally used.
     <div
       data-testid="agent-graph-progress-scroll"
       role="group"
@@ -251,22 +256,22 @@ export function AgentGraphProgress({
       <svg
         viewBox="0 0 510 370"
         aria-hidden="true"
-        style={{ display: "block", width: "100%", height: "auto", minWidth: "460px" }}
+        style={{ display: "block", width: "100%", height: "auto" }}
       >
         <defs>
-          <marker id="agp-arrow-muted" markerWidth={7} markerHeight={7} refX={5} refY={3.5} orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 z" style={{ fill: "var(--color-text-muted)" }} />
+          <marker id="agp-arrow-muted" markerWidth={6.3} markerHeight={6.3} refX={4.5} refY={3.15} orient="auto">
+            <path d="M0,0 L6.3,3.15 L0,6.3 z" style={{ fill: "var(--color-text-muted)" }} />
           </marker>
-          <marker id="agp-arrow-current" markerWidth={7} markerHeight={7} refX={5} refY={3.5} orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 z" style={{ fill: "var(--color-accent)" }} />
+          <marker id="agp-arrow-current" markerWidth={6.3} markerHeight={6.3} refX={4.5} refY={3.15} orient="auto">
+            <path d="M0,0 L6.3,3.15 L0,6.3 z" style={{ fill: "var(--color-accent)" }} />
           </marker>
-          <marker id="agp-arrow-taken" markerWidth={9} markerHeight={9} refX={7} refY={4.5} orient="auto">
+          <marker id="agp-arrow-taken" markerWidth={8.1} markerHeight={8.1} refX={6.3} refY={4.05} orient="auto">
             <path
-              d="M1,1 L8,4.5 L1,8 z"
+              d="M0.9,0.9 L7.2,4.05 L0.9,7.2 z"
               style={{
                 fill: "color-mix(in srgb, var(--color-accent) 10%, var(--color-surface))",
                 stroke: "var(--color-accent)",
-                strokeWidth: 1,
+                strokeWidth: 0.9,
                 strokeLinejoin: "round",
               }}
             />
