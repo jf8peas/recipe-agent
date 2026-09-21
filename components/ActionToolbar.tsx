@@ -25,6 +25,11 @@ interface ActionToolbarProps {
   editing: EditingControls;
   onStep: () => void;
   onNewSession: () => void;
+  /** Abandons this session (still resumable later from the session list —
+   * nothing is deleted) and returns to it, for someone mid-run who wants to
+   * start or switch to a different one without waiting for this one to
+   * finish. */
+  onExit: () => void;
 }
 
 const LIMIT_MESSAGES: Record<string, string> = {
@@ -50,6 +55,7 @@ export function ActionToolbar({
   editing,
   onStep,
   onNewSession,
+  onExit,
 }: ActionToolbarProps) {
   const done = outcome === "finalized" || outcome === "ingredient-error";
   const sessionCapped = error?.error === "session-cap";
@@ -78,7 +84,7 @@ export function ActionToolbar({
         </p>
       )}
 
-      <div style={{ display: "flex", gap: "var(--space-3)" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-3)" }}>
         {!done && pauseBetweenStages && (
           <Button variant="primary" onClick={onStep} disabled={loading || next.length === 0}>
             {loading ? "Working…" : `Step (${next[0] ?? "…"})`}
@@ -107,6 +113,10 @@ export function ActionToolbar({
             Edit
           </Button>
         )}
+
+        <Button variant="secondary" onClick={onExit}>
+          Back to your sessions
+        </Button>
       </div>
     </div>
   );

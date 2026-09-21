@@ -5,13 +5,14 @@ interface StageFailureBannerProps {
   loading: boolean;
   sessionCapped: boolean;
   onRetry: () => void;
+  onExit: () => void;
 }
 
 /** Shown when the current saved state's kind is `stage-failure` (spec
  * FR-051–FR-052): the reason, a Retry action (a plain re-execution — never
  * `updateState` — research R3), and a hint that Edit & Fork also works.
  * Disabled once the session is capped (FR-077) or an advance is in flight. */
-export function StageFailureBanner({ failureReason, loading, sessionCapped, onRetry }: StageFailureBannerProps) {
+export function StageFailureBanner({ failureReason, loading, sessionCapped, onRetry, onExit }: StageFailureBannerProps) {
   return (
     <div
       role="alert"
@@ -27,9 +28,12 @@ export function StageFailureBanner({ failureReason, loading, sessionCapped, onRe
     >
       <p style={{ margin: 0, fontWeight: 600, color: "var(--color-kind-stage-failure)" }}>Stage failed</p>
       {failureReason && <p style={{ margin: 0, fontSize: "var(--text-sm)" }}>{failureReason}</p>}
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--space-3)" }}>
         <Button variant="primary" onClick={onRetry} disabled={loading || sessionCapped}>
           {loading ? "Retrying…" : "Retry"}
+        </Button>
+        <Button variant="secondary" onClick={onExit}>
+          Back to your sessions
         </Button>
         <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
           {sessionCapped

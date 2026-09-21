@@ -307,6 +307,16 @@ export default function HomePage() {
     setView("entry");
   }
 
+  /** Abandons whatever session is active (still resumable later from the
+   * list — `reset()` only clears this device's "current session" pointer,
+   * nothing server-side) and lands on the session list, regardless of
+   * whether this session was originally opened from there or started fresh
+   * from the entry form. */
+  function handleExitToSessions() {
+    reset();
+    setView("list");
+  }
+
   return (
     <main style={{ padding: "var(--space-6)", maxWidth: "720px", margin: "0 auto" }}>
       {!snapshot ? (
@@ -483,6 +493,7 @@ export default function HomePage() {
                 }}
                 onStep={() => guardedStep("step")}
                 onNewSession={reset}
+                onExit={handleExitToSessions}
               />
             ) : pendingSave ? (
               <UnsavedResultBanner loading={loading} onRetrySave={retrySave} />
@@ -498,6 +509,7 @@ export default function HomePage() {
                 loading={loading || advanceLock.lockedElsewhere}
                 sessionCapped={error?.error === "session-cap"}
                 onRetry={() => guardedStep("retry")}
+                onExit={handleExitToSessions}
               />
             ) : (
               <ActionToolbar
@@ -516,6 +528,7 @@ export default function HomePage() {
                 }}
                 onStep={() => guardedStep("step")}
                 onNewSession={reset}
+                onExit={handleExitToSessions}
               />
             )}
           </div>
