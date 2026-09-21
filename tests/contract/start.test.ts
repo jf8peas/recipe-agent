@@ -38,6 +38,7 @@ beforeAll(async () => {
   process.env.RATE_WINDOW_SECONDS = "60";
   process.env.RATE_MAX_PER_WINDOW = "2";
   process.env.MAX_INGREDIENTS = "5";
+  process.env.MAX_INGREDIENT_LENGTH = "20";
   ({ POST } = await import("../../app/api/recipe/start/route"));
 });
 
@@ -77,6 +78,16 @@ describe("POST /api/recipe/start", () => {
     const json = await res.json();
     expect(json.error).toBe("too-many-ingredients");
     expect(json.max).toBe(5);
+  });
+
+  it("400s on an ingredient line over the configured max length, stating the max", async () => {
+    const res = await POST(
+      request({ ingredients: ["a normal one", "this single ingredient line is way too long"] }, "client-toolong"),
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe("ingredient-too-long");
+    expect(json.max).toBe(20);
   });
 
   it("happy path: creates a session/branch, runs parseIngredients, returns the contract shape", async () => {

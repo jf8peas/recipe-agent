@@ -31,6 +31,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const { ingredients } = body.data;
   const maxIngredients = Number(process.env.MAX_INGREDIENTS ?? 50);
+  const maxIngredientLength = Number(process.env.MAX_INGREDIENT_LENGTH ?? 80);
   if (ingredients.length === 0) {
     return jsonError(400, "no-ingredients", "Enter at least one ingredient.");
   }
@@ -40,6 +41,17 @@ export async function POST(request: Request): Promise<NextResponse> {
       "too-many-ingredients",
       `Enter at most ${maxIngredients} ingredients.`,
       { max: maxIngredients },
+    );
+  }
+  // A pathologically long single line (someone pasting in a wall of text)
+  // blows up parseIngredients's prompt/context rather than failing cleanly —
+  // caught here, before it ever reaches the model.
+  if (ingredients.some((i) => i.length > maxIngredientLength)) {
+    return jsonError(
+      400,
+      "ingredient-too-long",
+      `Each ingredient must be at most ${maxIngredientLength} characters.`,
+      { max: maxIngredientLength },
     );
   }
 

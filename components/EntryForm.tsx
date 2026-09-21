@@ -4,9 +4,11 @@ import { useState, type FormEvent } from "react";
 import { TextArea } from "@/components/ui/TextArea";
 import { Button } from "@/components/ui/Button";
 
-// Mirrors the server's MAX_INGREDIENTS default (.env.example) for instant
-// client-side feedback; the server is still the source of truth (FR-040).
+// Mirrors the server's MAX_INGREDIENTS/MAX_INGREDIENT_LENGTH defaults
+// (.env.example) for instant client-side feedback; the server is still the
+// source of truth (FR-040).
 const MAX_INGREDIENTS = 50;
+const MAX_INGREDIENT_LENGTH = 80;
 
 interface EntryFormProps {
   onSubmit: (ingredients: string[]) => void;
@@ -32,6 +34,13 @@ export function EntryForm({ onSubmit, disabled }: EntryFormProps) {
     }
     if (ingredients.length > MAX_INGREDIENTS) {
       setValidationError(`Enter at most ${MAX_INGREDIENTS} ingredients.`);
+      return;
+    }
+    const tooLong = ingredients.find((line) => line.length > MAX_INGREDIENT_LENGTH);
+    if (tooLong) {
+      setValidationError(
+        `Each ingredient must be at most ${MAX_INGREDIENT_LENGTH} characters — "${tooLong.slice(0, 30)}…" is too long.`,
+      );
       return;
     }
     setValidationError(null);
