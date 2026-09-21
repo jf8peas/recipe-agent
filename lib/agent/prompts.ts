@@ -103,9 +103,13 @@ Dish direction: ${chosen?.title ?? "(unspecified)"} — ${chosen?.summary ?? ""}
 Usable ingredients:
 ${usable.map((i) => `- ${i.name ?? i.raw}${i.quantity ? ` (${i.quantity})` : ""}`).join("\n")}
 
-Produce a title, a servings count, an ordered list of steps (each with an
-estimated time in minutes where sensible, and a technique name if relevant),
-and a "toBuy" list of anything needed but not among the ingredients above.`;
+Produce a title, a servings count, an "ingredients" list (name + quantity)
+covering everything the recipe actually uses — including items already
+among the ingredients above, with a quantity scaled to the servings count
+you chose — an ordered list of steps (each with an estimated time in
+minutes where sensible, and a technique name if relevant), and a "toBuy"
+list of anything on the ingredients list that isn't already among the
+ingredients above.`;
 }
 
 export function critiquePrompt(
@@ -146,6 +150,13 @@ export function finalizePrompt(recipeDraft: RecipeDraft | null, constraints: Con
 polish the wording, and produce an approximate nutrition estimate per serving
 (calories, protein, carbs, fat). Nutrition figures are estimates, not lab
 measurements.
+
+Keep the draft's "ingredients" list as the same items, adjusting each
+quantity only if you scaled the servings — do not drop or invent
+ingredients. Keep the "toBuy" list as-is the same way — same items, same
+wording, quantities adjusted only if scaling changed them. Do not drop
+items from it and do not invent new ones; if the draft's list is empty,
+the finalized recipe's should be empty too.
 
 Constraints:
 ${constraintsBlock(constraints)}

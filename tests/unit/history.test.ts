@@ -45,6 +45,7 @@ const directionSelection = {
 const draft = {
   title: "Spinach Frittata",
   servings: 2,
+  ingredients: [{ name: "eggs", quantity: "2" }],
   steps: [{ order: 1, text: "Whisk eggs", minutes: 2, technique: null }],
   toBuy: [],
 };

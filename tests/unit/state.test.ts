@@ -67,6 +67,7 @@ describe("RecipeDraftSchema", () => {
   const valid = {
     title: "Spinach Frittata",
     servings: 2,
+    ingredients: [{ name: "eggs", quantity: "2" }],
     steps: [{ order: 1, text: "Whisk eggs", minutes: 2, technique: null }],
     toBuy: [],
   };
@@ -101,6 +102,7 @@ describe("FinalRecipeSchema", () => {
       FinalRecipeSchema.safeParse({
         title: "Spinach Frittata",
         servings: 2,
+        ingredients: [],
         steps: [],
         toBuy: [],
         scaledServings: 2,

@@ -65,6 +65,10 @@ const FIXED_DIRECTION_SELECTION = {
 const FIXED_DRAFT = {
   title: "Spinach Frittata",
   servings: 2,
+  ingredients: [
+    { name: "eggs", quantity: "4" },
+    { name: "spinach", quantity: "1 cup" },
+  ],
   steps: [
     { order: 1, text: "Whisk the eggs.", minutes: 2, technique: null },
     { order: 2, text: "Cook until set.", minutes: 8, technique: "bake" },
@@ -138,8 +142,19 @@ function fakeResponseFor(nodeName: string, prompt: string): unknown {
       const carriesSentinel = prompt.includes(BLOCKING_CRITIQUE_SENTINEL);
       return { recipeDraft: { ...FIXED_DRAFT, toBuy: carriesSentinel ? [BLOCKING_CRITIQUE_SENTINEL] : FIXED_DRAFT.toBuy } };
     }
-    case "finalize":
-      return { finalRecipe: FIXED_FINAL_RECIPE };
+    case "finalize": {
+      // Mirrors draftRecipe/refine above — finalizePrompt also embeds the
+      // full recipeDraft (including toBuy) as JSON, so the same substring
+      // check carries the sentinel through here too, matching the real
+      // finalizePrompt's instruction to preserve toBuy rather than drop it.
+      const carriesSentinel = prompt.includes(BLOCKING_CRITIQUE_SENTINEL);
+      return {
+        finalRecipe: {
+          ...FIXED_FINAL_RECIPE,
+          toBuy: carriesSentinel ? [BLOCKING_CRITIQUE_SENTINEL] : FIXED_FINAL_RECIPE.toBuy,
+        },
+      };
+    }
     default:
       throw new Error(`fake-model: no fixture for node "${nodeName}"`);
   }

@@ -35,9 +35,19 @@ export const RecipeStepSchema = z.object({
 });
 export type RecipeStep = z.infer<typeof RecipeStepSchema>;
 
+export const RecipeIngredientSchema = z.object({
+  name: z.string(),
+  quantity: z.string(),
+});
+export type RecipeIngredient = z.infer<typeof RecipeIngredientSchema>;
+
 export const RecipeDraftSchema = z.object({
   title: z.string(),
   servings: z.number().int().positive(),
+  // Everything the recipe uses, with quantities — whether or not it's
+  // already on hand (that's what `toBuy` is for: the subset of this that
+  // still needs buying, kept as its own field for a quick shopping glance).
+  ingredients: z.array(RecipeIngredientSchema),
   steps: z.array(RecipeStepSchema),
   toBuy: z.array(z.string()),
 });

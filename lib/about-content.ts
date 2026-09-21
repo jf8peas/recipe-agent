@@ -239,7 +239,7 @@ export const PROMPT_ROUTING_TABLE: PromptRoutingRow[] = [
   {
     stage: "draftRecipe",
     model: "fast",
-    asks: "Write a full draft — steps, timing, toBuy list",
+    asks: "Write a full draft — ingredients, steps, timing, toBuy list",
     routesTo: "critique",
   },
   {

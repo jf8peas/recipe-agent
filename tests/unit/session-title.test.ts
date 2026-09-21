@@ -35,7 +35,7 @@ describe("titleForStage", () => {
   it("returns the draft's own title after draftRecipe", () => {
     const state: State = {
       ...baseState,
-      recipeDraft: { title: "Spinach & Feta Frittata", servings: 2, steps: [], toBuy: [] },
+      recipeDraft: { title: "Spinach & Feta Frittata", servings: 2, ingredients: [], steps: [], toBuy: [] },
     };
     expect(titleForStage("draftRecipe", state)).toBe("Spinach & Feta Frittata");
   });
@@ -46,6 +46,7 @@ describe("titleForStage", () => {
       finalRecipe: {
         title: "Spinach & Feta Frittata (serves 4)",
         servings: 4,
+        ingredients: [],
         steps: [],
         toBuy: [],
         scaledServings: 4,
@@ -77,6 +78,7 @@ describe("bestAvailableTitle", () => {
   const draft: NonNullable<State["recipeDraft"]> = {
     title: "Draft title",
     servings: 2,
+    ingredients: [],
     steps: [],
     toBuy: [],
   };

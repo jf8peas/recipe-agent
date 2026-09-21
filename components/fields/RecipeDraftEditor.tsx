@@ -19,6 +19,16 @@ export function RecipeDraftEditor({ recipeDraft, editable, onChange }: RecipeDra
       <>
         <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 600 }}>{recipeDraft.title}</p>
         <p style={{ margin: "0 0 var(--space-2) 0", fontSize: "var(--text-sm)" }}>Serves {recipeDraft.servings}</p>
+        {recipeDraft.ingredients.length > 0 && (
+          <ul style={{ margin: "0 0 var(--space-3) 0", paddingLeft: "var(--space-5)" }}>
+            {recipeDraft.ingredients.map((ing, i) => (
+              <li key={i}>
+                {ing.quantity ? `${ing.quantity} ` : ""}
+                {ing.name}
+              </li>
+            ))}
+          </ul>
+        )}
         <ol style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
           {recipeDraft.steps.map((s) => (
             <li key={s.order}>

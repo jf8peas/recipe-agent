@@ -75,6 +75,16 @@ export function FinalRecipeView({
       <p style={{ margin: "0 0 var(--space-2) 0", fontSize: "var(--text-sm)" }}>
         Serves {finalRecipe.scaledServings}
       </p>
+      {finalRecipe.ingredients.length > 0 && (
+        <ul style={{ margin: "0 0 var(--space-3) 0", paddingLeft: "var(--space-5)" }}>
+          {finalRecipe.ingredients.map((ing, i) => (
+            <li key={i}>
+              {ing.quantity ? `${ing.quantity} ` : ""}
+              {ing.name}
+            </li>
+          ))}
+        </ul>
+      )}
       <ol style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
         {finalRecipe.steps.map((s) => (
           <li key={s.order}>
@@ -84,6 +94,11 @@ export function FinalRecipeView({
           </li>
         ))}
       </ol>
+      {finalRecipe.toBuy.length > 0 && (
+        <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
+          To buy: {finalRecipe.toBuy.join(", ")}
+        </p>
+      )}
       <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
         ~{finalRecipe.nutrition.calories} kcal, {finalRecipe.nutrition.protein}g protein,{" "}
         {finalRecipe.nutrition.carbs}g carbs, {finalRecipe.nutrition.fat}g fat per serving (approximate)
