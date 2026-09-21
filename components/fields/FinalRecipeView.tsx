@@ -19,7 +19,7 @@ export function FinalRecipeView({
 }: FinalRecipeViewProps) {
   return (
     <>
-      {finalizedAtRefineLimit && (
+      {finalizedAtRefineLimit ? (
         <div
           role="status"
           style={{
@@ -45,6 +45,29 @@ export function FinalRecipeView({
               {latestCritique.flavorBalance ? ` ${latestCritique.flavorBalance}` : ""}
             </p>
           )}
+        </div>
+      ) : (
+        // The other, equally possible way `finalize` is reached — surfaced
+        // just as explicitly as the limit-hit case above, so the final tab
+        // never leaves it ambiguous which of the two actually happened.
+        <div
+          role="status"
+          style={{
+            margin: "0 0 var(--space-4) 0",
+            padding: "var(--space-3) var(--space-4)",
+            border: "1px solid var(--color-success)",
+            borderRadius: "var(--radius-md)",
+            background: "var(--color-surface)",
+          }}
+        >
+          <p style={{ margin: 0, fontWeight: 600, color: "var(--color-success)" }}>
+            Passed critique — no blocking issues found
+          </p>
+          <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--text-sm)" }}>
+            {refineCount > 0
+              ? `The critique stage found no remaining blocking problems after ${refineCount} refinement cycle${refineCount === 1 ? "" : "s"}.`
+              : "The critique stage found no blocking problems with feasibility or flavor on the first pass — no revisions were needed."}
+          </p>
         </div>
       )}
 
