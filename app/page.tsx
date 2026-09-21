@@ -7,6 +7,7 @@ import { bestAvailableTitle } from "@/lib/session-title";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { useAdvanceLock } from "@/hooks/useAdvanceLock";
 import { usePauseBetweenStages } from "@/hooks/usePauseBetweenStages";
+import { AppHeader } from "@/components/AppHeader";
 import { EntryForm } from "@/components/EntryForm";
 import { SessionList } from "@/components/SessionList";
 import { AgentGraphProgress } from "@/components/AgentGraphProgress";
@@ -71,7 +72,13 @@ export default function HomePage() {
     reset,
   } = useSession();
   const sessionList = useSessionList(clientId);
-  const [pauseBetweenStages] = usePauseBetweenStages();
+  // The single owner of this setting (research: `AppHeader`'s own
+  // self-managed fallback, used when unmounted from `layout.tsx`, lived as a
+  // SEPARATE hook instance from this one, kept in sync only by a same-tab
+  // custom event — a real desync was observed where the header showed
+  // "on" but this component's own instance still read "off", so this is
+  // now the one source of truth, passed down as a controlled prop below).
+  const [pauseBetweenStages, setPauseBetweenStages] = usePauseBetweenStages();
   const advanceLock = useAdvanceLock(snapshot?.branchId ?? null);
   // Explicit, sticky — NOT derived from `entries.length` on every render.
   // Deleting the only session while viewing the list must still show "No
@@ -232,9 +239,12 @@ export default function HomePage() {
 
   if (!clientId || restoring) {
     return (
-      <main style={{ padding: "var(--space-6)" }}>
-        <p style={{ color: "var(--color-text-muted)" }}>Loading…</p>
-      </main>
+      <>
+        <AppHeader pauseBetweenStages={pauseBetweenStages} onTogglePause={setPauseBetweenStages} />
+        <main style={{ padding: "var(--space-6)" }}>
+          <p style={{ color: "var(--color-text-muted)" }}>Loading…</p>
+        </main>
+      </>
     );
   }
 
@@ -318,7 +328,9 @@ export default function HomePage() {
   }
 
   return (
-    <main style={{ padding: "var(--space-6)", maxWidth: "720px", margin: "0 auto" }}>
+    <>
+      <AppHeader pauseBetweenStages={pauseBetweenStages} onTogglePause={setPauseBetweenStages} />
+      <main style={{ padding: "var(--space-6)", maxWidth: "720px", margin: "0 auto" }}>
       {!snapshot ? (
         <>
           {deletedNotice && (
@@ -534,6 +546,7 @@ export default function HomePage() {
           </div>
         </div>
       )}
-    </main>
+      </main>
+    </>
   );
 }
