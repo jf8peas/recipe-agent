@@ -9,6 +9,7 @@ import { DirectionSelectionEditor } from "@/components/fields/DirectionSelection
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { critiqueCycleOf, draftOccurrenceOf, isEditableTab, tabLabel, type TabId } from "@/lib/run-tabs";
+import { finalizedAtRefineLimit } from "@/lib/agent/edges";
 import type { EditableField } from "@/lib/field-consumers";
 
 export interface RunTabsProps {
@@ -136,7 +137,14 @@ export function RunTabs({
 
       {critique && <CritiqueView critique={critique} />}
 
-      {activeTab === "final" && state.finalRecipe && <FinalRecipeView finalRecipe={state.finalRecipe} />}
+      {activeTab === "final" && state.finalRecipe && (
+        <FinalRecipeView
+          finalRecipe={state.finalRecipe}
+          finalizedAtRefineLimit={finalizedAtRefineLimit(state)}
+          refineCount={state.refineCount}
+          latestCritique={state.critiques[state.critiques.length - 1] ?? null}
+        />
+      )}
 
       {showEditLink && (
         <div>

@@ -13,3 +13,15 @@ export function routeAfterCritique(state: State): "refine" | "finalize" {
   if (blocking && state.refineCount < maxRefineCycles) return "refine";
   return "finalize";
 }
+
+/** True when `finalize` was reached with the latest critique still
+ * `blocking` — the only way `routeAfterCritique` above sends a still-blocking
+ * draft to `finalize` instead of `refine` is `refineCount` having already hit
+ * `MAX_REFINE_CYCLES`. Surfaced on the final recipe tab so it's clear the
+ * recipe wasn't approved outright — the cycle cap (there to bound token
+ * spend) was hit while a real issue was still flagged. */
+export function finalizedAtRefineLimit(state: State): boolean {
+  if (state.outcome !== "finalized") return false;
+  const latest = state.critiques[state.critiques.length - 1];
+  return latest?.blocking ?? false;
+}

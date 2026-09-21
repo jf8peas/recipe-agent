@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { routeAfterParseIngredients, routeAfterCritique } from "../../lib/agent/edges";
+import { routeAfterParseIngredients, routeAfterCritique, finalizedAtRefineLimit } from "../../lib/agent/edges";
 import { INITIAL_STATE, toRawIngredient, type State } from "../../lib/agent/state";
 
 function state(overrides: Partial<State>): State {
@@ -65,5 +65,44 @@ describe("routeAfterCritique", () => {
 
   it("routes to finalize when there are no critiques yet", () => {
     expect(routeAfterCritique(state({}))).toBe("finalize");
+  });
+});
+
+describe("finalizedAtRefineLimit", () => {
+  it("is false when not finalized", () => {
+    const s = state({
+      outcome: "in-progress",
+      critiques: [
+        { cycle: 1, feasibility: "bad", flavorBalance: "ok", missingOrUnclear: [], blocking: true },
+      ],
+    });
+    expect(finalizedAtRefineLimit(s)).toBe(false);
+  });
+
+  it("is false when finalized because the latest critique passed clean", () => {
+    const s = state({
+      outcome: "finalized",
+      critiques: [
+        { cycle: 1, feasibility: "ok", flavorBalance: "ok", missingOrUnclear: [], blocking: false },
+      ],
+    });
+    expect(finalizedAtRefineLimit(s)).toBe(false);
+  });
+
+  it("is true when finalized while the latest critique was still blocking (cycle cap hit)", () => {
+    const s = state({
+      outcome: "finalized",
+      refineCount: 2,
+      critiques: [
+        { cycle: 1, feasibility: "bad", flavorBalance: "ok", missingOrUnclear: [], blocking: true },
+        { cycle: 2, feasibility: "bad", flavorBalance: "ok", missingOrUnclear: [], blocking: true },
+        { cycle: 3, feasibility: "bad", flavorBalance: "ok", missingOrUnclear: [], blocking: true },
+      ],
+    });
+    expect(finalizedAtRefineLimit(s)).toBe(true);
+  });
+
+  it("is false when finalized with no critiques at all (shouldn't happen via the graph, but no crash)", () => {
+    expect(finalizedAtRefineLimit(state({ outcome: "finalized" }))).toBe(false);
   });
 });
