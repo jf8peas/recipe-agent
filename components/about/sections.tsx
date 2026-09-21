@@ -9,6 +9,8 @@ import {
   ARCHITECTURE_NOTES,
   AUTHOR_BIO,
   AUTHOR_LINKEDIN_URL,
+  TESTER_BIO,
+  TESTER_LINKEDIN_URL,
   BRANCHING_CALLOUTS,
   BRANCHING_INTRO,
   BRANCHING_STEPS,
@@ -105,6 +107,15 @@ export function AuthorSection() {
       <a href={AUTHOR_LINKEDIN_URL} target="_blank" rel="noopener noreferrer" style={pillLinkStyle}>
         View LinkedIn profile →
       </a>
+
+      <div style={{ ...cardStyle(), marginTop: "var(--space-6)" }}>
+        <p style={kickerStyle}>Who&apos;s testing it</p>
+        <h3 style={h3Style}>Alesja Tanabe</h3>
+        <p style={bodyTextStyle}>{TESTER_BIO}</p>
+        <a href={TESTER_LINKEDIN_URL} target="_blank" rel="noopener noreferrer" style={pillLinkStyle}>
+          View LinkedIn profile →
+        </a>
+      </div>
     </section>
   );
 }
@@ -599,11 +610,19 @@ export function ClosingSection() {
           </div>
         ))}
       </div>
-      <div style={{ ...calloutStyle(), display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-3)" }}>
-        <p style={{ fontWeight: 600, color: "inherit", margin: 0 }}>Built by John Fong</p>
-        <a href={AUTHOR_LINKEDIN_URL} target="_blank" rel="noopener noreferrer" style={pillLinkStyle}>
-          View LinkedIn profile →
-        </a>
+      <div style={{ ...calloutStyle(), display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-3)" }}>
+          <p style={{ fontWeight: 600, color: "inherit", margin: 0 }}>Built by John Fong</p>
+          <a href={AUTHOR_LINKEDIN_URL} target="_blank" rel="noopener noreferrer" style={pillLinkStyle}>
+            View LinkedIn profile →
+          </a>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-3)" }}>
+          <p style={{ fontWeight: 600, color: "inherit", margin: 0 }}>Tested by Alesja Tanabe</p>
+          <a href={TESTER_LINKEDIN_URL} target="_blank" rel="noopener noreferrer" style={pillLinkStyle}>
+            View LinkedIn profile →
+          </a>
+        </div>
       </div>
     </section>
   );

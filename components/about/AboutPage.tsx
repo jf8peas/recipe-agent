@@ -24,6 +24,10 @@ import {
 export interface AboutPageProps {
   open: boolean;
   onClose: () => void;
+  /** Section id to focus/scroll to on open instead of the top of the page
+   * (e.g. the header's "Author" link opening straight to "Who built this")
+   * — same mechanism as the in-page topic nav's own jump-to-section. */
+  initialFocusId?: string | null;
 }
 
 const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -35,7 +39,7 @@ const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), [tabindex]:not([tab
  * `AboutSlideshow.tsx` unchanged (research R7); slide pagination is dropped
  * entirely in favor of a sticky topic nav + continuous scroll.
  */
-export function AboutPage({ open, onClose }: AboutPageProps) {
+export function AboutPage({ open, onClose, initialFocusId }: AboutPageProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
@@ -43,16 +47,17 @@ export function AboutPage({ open, onClose }: AboutPageProps) {
   useEffect(() => {
     if (open) {
       previouslyFocused.current = document.activeElement as HTMLElement | null;
-      mainRef.current?.focus();
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (mainRef.current) {
         mainRef.current.style.scrollBehavior = prefersReducedMotion ? "auto" : "smooth";
       }
+      const target = initialFocusId ? document.getElementById(initialFocusId) : null;
+      (target ?? mainRef.current)?.focus();
     } else if (previouslyFocused.current) {
       previouslyFocused.current.focus();
       previouslyFocused.current = null;
     }
-  }, [open]);
+  }, [open, initialFocusId]);
 
   if (!open) return null;
 

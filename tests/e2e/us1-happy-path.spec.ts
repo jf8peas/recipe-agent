@@ -15,16 +15,22 @@ test("US1 happy path: start -> step through all stages -> finalized recipe", asy
   await expect(page.getByRole("button", { name: "Start a new session" })).toBeVisible();
   await expectNoA11yViolations(page);
 
-  // Header author/feedback links open in a new tab (spec FR-047) and leave
-  // this session unaffected (SC-016).
-  const authorLink = page.getByRole("link", { name: "Author" });
-  await expect(authorLink).toHaveAttribute("target", "_blank");
-  await expect(authorLink).toHaveAttribute("rel", /noopener/);
+  // Header Feedback link opens in a new tab (spec FR-047) and leaves this
+  // session unaffected (SC-016).
   const feedbackLink = page.getByRole("link", { name: "Feedback" });
   await expect(feedbackLink).toHaveAttribute("target", "_blank");
   await expect(feedbackLink).toHaveAttribute("rel", /noopener/);
 
-  const [popup] = await Promise.all([page.waitForEvent("popup"), authorLink.click()]);
-  await popup.close();
+  // Header's Author control opens the About page straight to "Who built
+  // this" (in-page, not a new tab), and returning leaves this session
+  // unaffected (SC-016).
+  await page.getByRole("button", { name: "Author" }).click();
+  const dialog = page.getByRole("dialog", { name: "About This App" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "John Fong" })).toBeInViewport();
+  await expect(dialog.getByRole("heading", { name: "Alesja Tanabe" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Return to App" }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Final recipe" })).toBeVisible();
 });

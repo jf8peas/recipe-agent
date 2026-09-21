@@ -2,7 +2,6 @@
 
 import { useState, type CSSProperties } from "react";
 import { usePauseBetweenStages } from "@/hooks/usePauseBetweenStages";
-import { AUTHOR_LINKEDIN_URL } from "@/lib/about-content";
 import { AboutPage } from "@/components/about/AboutPage";
 import { Toggle } from "@/components/ui/Toggle";
 import { Button } from "@/components/ui/Button";
@@ -129,11 +128,20 @@ export function AppHeader({
 }: AppHeaderProps) {
   const [selfPause, setSelfPause] = usePauseBetweenStages();
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  // Which About-page section to land on when it opens — null defaults to
+  // the top (the "About This App" button); "Author" jumps straight to
+  // "Who built this" instead of linking out to LinkedIn directly.
+  const [aboutInitialSection, setAboutInitialSection] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
 
   const pauseBetweenStages = pauseProp ?? selfPause;
   const handleTogglePause = onTogglePause ?? setSelfPause;
   const handleOpenAbout = onOpenAbout ?? (() => setIsAboutOpen(true));
+
+  function openAboutAt(sectionId: string | null) {
+    setAboutInitialSection(sectionId);
+    handleOpenAbout();
+  }
 
   function handleNavClick(link: NavLink) {
     return () => {
@@ -205,18 +213,24 @@ export function AppHeader({
             When off, the assistant advances through stages automatically (Auto-run).
           </span>
 
-          <a href={AUTHOR_LINKEDIN_URL} target="_blank" rel="noopener noreferrer" style={utilityLinkStyle}>
+          <button
+            type="button"
+            onClick={() => openAboutAt("author")}
+            style={{ ...utilityLinkStyle, font: "inherit", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+          >
             Author
-          </a>
+          </button>
           <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer" style={utilityLinkStyle}>
             Feedback
           </a>
-          <Button variant="secondary" onClick={handleOpenAbout}>
+          <Button variant="secondary" onClick={() => openAboutAt(null)}>
             About This App
           </Button>
         </div>
       </header>
-      {!onOpenAbout && <AboutPage open={isAboutOpen} onClose={() => setIsAboutOpen(false)} />}
+      {!onOpenAbout && (
+        <AboutPage open={isAboutOpen} onClose={() => setIsAboutOpen(false)} initialFocusId={aboutInitialSection} />
+      )}
     </>
   );
 }
