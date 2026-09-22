@@ -340,3 +340,33 @@ introspected live — see that spec's Assumptions).
 - [specs/004-about-page-redesign/research.md](specs/004-about-page-redesign/research.md)
   — why it's a hand-rolled overlay with no new dependency, and how the
   content/diagrams/topic-nav carry over the app's own established patterns.
+
+**Feature 005 — the agent-graph progress diagram**:
+
+- [specs/005-agent-graph-progress/spec.md](specs/005-agent-graph-progress/spec.md)
+  — why the linear stepper it replaced was actively misleading (it marked
+  every forward stage "done" even on the ingredient-error path), and the
+  requirements for a diagram showing the graph's true topology and one
+  run's real path through it.
+- [specs/005-agent-graph-progress/data-model.md](specs/005-agent-graph-progress/data-model.md)
+  — how a run's checkpoint history is derived into taken/current/not-reached
+  nodes and edges.
+- [specs/005-agent-graph-progress/research.md](specs/005-agent-graph-progress/research.md)
+  — the inline-SVG/tokens-only diagramming approach and its accessible,
+  non-visual equivalent.
+
+**Feature 006 — UI unification**:
+
+- [specs/006-ui-unification/spec.md](specs/006-ui-unification/spec.md) —
+  one shared header (app/about states), a real switch control, the two-row
+  graph rebuild, the running session restructured into stage tabs synced
+  with the graph, and a `components/ui/` primitives layer used across every
+  screen.
+- [specs/006-ui-unification/research.md](specs/006-ui-unification/research.md)
+  — design decisions (a small internal UI-primitives module instead of an
+  external library) and why the constitution's Principle VI was amended:
+  the three-panel session layout it originally described was never actually
+  shipped, replaced by the single-column/graph/tabs/sticky-action-row layout
+  this feature delivered.
+- [specs/006-ui-unification/quickstart.md](specs/006-ui-unification/quickstart.md)
+  — manual verification walkthrough for the unified screens.
