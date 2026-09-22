@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Constraints } from "@/lib/agent/state";
 
 interface ConstraintsEditorProps {
@@ -8,6 +9,20 @@ interface ConstraintsEditorProps {
 
 /** Constraints view/editor (spec FR-022/FR-023/FR-024). */
 export function ConstraintsEditor({ constraints, editable, onChange }: ConstraintsEditorProps) {
+  // Locally buffered, seeded once from the incoming snapshot — like
+  // `IngredientsEditor`'s `raw` state. `constraints` only reflects the
+  // graph's last-saved state and never updates mid-keystroke, so binding
+  // the inputs to it directly (as this used to) made them impossible to
+  // type into: every keystroke's change was immediately overwritten back
+  // to the unchanged prop on the next render.
+  const [local, setLocal] = useState(constraints);
+  // Diets' own raw text, kept separate from the parsed `local.diets` array
+  // for the same reason `IngredientsEditor` keeps raw text separate from
+  // its parsed ingredients — normalizing on every keystroke (dropping a
+  // trailing ", " via split/trim/filter) would otherwise fight the typing
+  // itself, erasing separators the moment they're typed.
+  const [dietsRaw, setDietsRaw] = useState(() => constraints.diets.join(", "));
+
   if (!editable || !onChange) {
     const parts: string[] = [];
     if (constraints.cuisine) parts.push(`Cuisine: ${constraints.cuisine}`);
@@ -27,6 +42,12 @@ export function ConstraintsEditor({ constraints, editable, onChange }: Constrain
     );
   }
 
+  function update(patch: Partial<Constraints>) {
+    const next = { ...local, ...patch };
+    setLocal(next);
+    onChange!(next);
+  }
+
   const fieldStyle = {
     padding: "var(--space-1) var(--space-2)",
     border: "1px solid var(--color-border)",
@@ -42,8 +63,8 @@ export function ConstraintsEditor({ constraints, editable, onChange }: Constrain
         Cuisine
         <input
           type="text"
-          value={constraints.cuisine ?? ""}
-          onChange={(e) => onChange({ ...constraints, cuisine: e.target.value || null })}
+          value={local.cuisine ?? ""}
+          onChange={(e) => update({ cuisine: e.target.value || null })}
           style={fieldStyle}
         />
       </label>
@@ -52,8 +73,8 @@ export function ConstraintsEditor({ constraints, editable, onChange }: Constrain
         <input
           type="number"
           min={1}
-          value={constraints.maxMinutes ?? ""}
-          onChange={(e) => onChange({ ...constraints, maxMinutes: e.target.value ? Number(e.target.value) : null })}
+          value={local.maxMinutes ?? ""}
+          onChange={(e) => update({ maxMinutes: e.target.value ? Number(e.target.value) : null })}
           style={fieldStyle}
         />
       </label>
@@ -62,8 +83,8 @@ export function ConstraintsEditor({ constraints, editable, onChange }: Constrain
         <input
           type="number"
           min={1}
-          value={constraints.servings ?? ""}
-          onChange={(e) => onChange({ ...constraints, servings: e.target.value ? Number(e.target.value) : null })}
+          value={local.servings ?? ""}
+          onChange={(e) => update({ servings: e.target.value ? Number(e.target.value) : null })}
           style={fieldStyle}
         />
       </label>
@@ -71,16 +92,16 @@ export function ConstraintsEditor({ constraints, editable, onChange }: Constrain
         Diets (comma-separated)
         <input
           type="text"
-          value={constraints.diets.join(", ")}
-          onChange={(e) =>
-            onChange({
-              ...constraints,
+          value={dietsRaw}
+          onChange={(e) => {
+            setDietsRaw(e.target.value);
+            update({
               diets: e.target.value
                 .split(",")
                 .map((d) => d.trim())
                 .filter(Boolean),
-            })
-          }
+            });
+          }}
           style={fieldStyle}
         />
       </label>
