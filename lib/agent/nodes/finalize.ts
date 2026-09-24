@@ -61,8 +61,14 @@ async function tryGenerateDishImage(
   threadId: string | undefined,
   config: LangGraphRunnableConfig | undefined,
 ): Promise<DishImage | null> {
-  if (imageDeadlineMs < MIN_IMAGE_BUDGET_MS || !threadId) return null;
+  if (imageDeadlineMs < MIN_IMAGE_BUDGET_MS || !threadId) {
+    console.log(
+      `[finalize] image call skipped: imageDeadlineMs=${imageDeadlineMs} threadId=${threadId ?? "<none>"}`,
+    );
+    return null;
+  }
 
+  const imageCallStartedAt = Date.now();
   try {
     const model = createChatModel(MODELS.image, {
       // OpenRouter's `"image"` modality isn't in the upstream `openai`
@@ -74,6 +80,10 @@ async function tryGenerateDishImage(
     const combinedSignal = config?.signal
       ? AbortSignal.any([config.signal, AbortSignal.timeout(imageDeadlineMs)])
       : AbortSignal.timeout(imageDeadlineMs);
+
+    console.log(
+      `[finalize] image call starting: model=${MODELS.image} imageDeadlineMs=${imageDeadlineMs}`,
+    );
 
     // Deliberately NOT spreading `...config` here (unlike the text call
     // below, which passes it exactly like every other node always has) —
@@ -87,8 +97,13 @@ async function tryGenerateDishImage(
       signal: combinedSignal,
     });
 
+    console.log(`[finalize] image call returned after ${Date.now() - imageCallStartedAt}ms`);
+
     const content = response.content;
-    if (!Array.isArray(content)) return null;
+    if (!Array.isArray(content)) {
+      console.log(`[finalize] image call: response.content was not an array:`, JSON.stringify(content).slice(0, 500));
+      return null;
+    }
     const textBlock = content.find(
       (block): block is { type: "text"; text: string } =>
         typeof block === "object" && block !== null && (block as { type?: unknown }).type === "text",
@@ -97,14 +112,24 @@ async function tryGenerateDishImage(
       (block): block is { type: "image"; url: string } =>
         typeof block === "object" && block !== null && (block as { type?: unknown }).type === "image",
     );
-    if (!textBlock || !imageBlock) return null;
+    if (!textBlock || !imageBlock) {
+      console.log(
+        `[finalize] image call: missing text or image block — content types were [${content.map((b) => (typeof b === "object" && b !== null ? (b as { type?: unknown }).type : typeof b)).join(", ")}]`,
+      );
+      return null;
+    }
 
     const crop = DishImageCropSchema.parse(JSON.parse(textBlock.text));
     const parsed = parseDataUrl(imageBlock.url);
-    if (!parsed) return null;
+    if (!parsed) {
+      console.log(`[finalize] image call: image block's url wasn't a parseable data URL`);
+      return null;
+    }
 
     const imageId = mintImageId();
     await insertImage({ imageId, threadId, bytes: parsed.bytes, mime: parsed.mime });
+
+    console.log(`[finalize] image call succeeded: imageId=${imageId} bytes=${parsed.bytes.length}`);
 
     return DishImageSchema.parse({
       imageId,
@@ -113,10 +138,16 @@ async function tryGenerateDishImage(
       zoom: crop.zoom ?? null,
       alt: `Photo of ${finalRecipe.title}`,
     });
-  } catch {
+  } catch (err) {
     // Network error, timeout/abort, invalid JSON, or an out-of-range crop —
     // all treated identically (research R2/R3): an image failure never
-    // becomes a stage failure or loses the recipe text (FR-003/004).
+    // becomes a stage failure or loses the recipe text (FR-003/004). Still
+    // logged (never silently swallowed) so a production failure is
+    // diagnosable instead of just showing up as "no photo" with no trace.
+    console.error(
+      `[finalize] image call failed after ${Date.now() - imageCallStartedAt}ms:`,
+      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    );
     return null;
   }
 }
@@ -143,6 +174,9 @@ export async function finalize(
   // even though `startedAt` itself was already fixed to measure from the
   // true request start.
   const textDeadlineMs = Math.max(0, TEXT_DEADLINE_MS - (Date.now() - startedAt));
+  console.log(
+    `[finalize] starting: model=${MODELS.default} textDeadlineMs=${textDeadlineMs} preNodeElapsedMs=${Date.now() - startedAt}`,
+  );
   const textModel = createChatModel(MODELS.default, { timeoutMs: textDeadlineMs }).withStructuredOutput(
     OutputSchema,
     { name: "finalize" },
@@ -150,10 +184,21 @@ export async function finalize(
   const textSignal = config?.signal
     ? AbortSignal.any([config.signal, AbortSignal.timeout(textDeadlineMs)])
     : AbortSignal.timeout(textDeadlineMs);
-  const result = await textModel.invoke(
-    finalizePrompt(state.recipeDraft, state.constraints),
-    { ...config, signal: textSignal },
-  );
+  const textCallStartedAt = Date.now();
+  let result: unknown;
+  try {
+    result = await textModel.invoke(
+      finalizePrompt(state.recipeDraft, state.constraints),
+      { ...config, signal: textSignal },
+    );
+  } catch (err) {
+    console.error(
+      `[finalize] text call failed after ${Date.now() - textCallStartedAt}ms:`,
+      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    );
+    throw err;
+  }
+  console.log(`[finalize] text call returned after ${Date.now() - textCallStartedAt}ms`);
   const { finalRecipe } = OutputSchema.parse(result);
 
   const elapsedMs = Date.now() - startedAt;
@@ -161,5 +206,6 @@ export async function finalize(
   const threadId = config?.configurable?.thread_id as string | undefined;
   const dishImage = await tryGenerateDishImage(finalRecipe, imageDeadlineMs, threadId, config);
 
+  console.log(`[finalize] done after ${Date.now() - startedAt}ms total, dishImage=${dishImage ? "yes" : "no"}`);
   return { finalRecipe, dishImage, outcome: "finalized" };
 }

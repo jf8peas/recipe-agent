@@ -77,6 +77,8 @@ export async function POST(
     return NextResponse.json(rejection, { status: 429 });
   }
 
+  console.log(`[step] pre-graph overhead so far: ${Date.now() - requestStartedAt}ms (ownership+rate-limit checks)`);
+
   const graph = getGraph();
   const config = {
     configurable: { thread_id: branchId, checkpoint_id: fromCheckpointId, requestStartedAt },
@@ -88,6 +90,7 @@ export async function POST(
   if (!fromCheckpointExists) {
     return jsonError(404, "not-found", "That checkpoint no longer exists.");
   }
+  console.log(`[step] fromSnapshot fetched at ${Date.now() - requestStartedAt}ms, next=${fromSnapshot.next.join(",")}`);
 
   // Best-effort double-advance backstop (spec FR-059) — the primary guard is
   // the client-side Web Lock (research R11). A checkpoint that already has a
@@ -101,6 +104,9 @@ export async function POST(
       outcome: (snapshot.values as State).outcome,
     });
   }
+  console.log(
+    `[step] siblingHistory read (${siblingHistory.length} checkpoints) done at ${Date.now() - requestStartedAt}ms`,
+  );
   const alreadyAdvanced = siblingHistory.some(
     (entry) => entry.parentCheckpointId === fromCheckpointId && entry.outcome !== "stage-failure",
   );
@@ -117,8 +123,14 @@ export async function POST(
 
   let state: State;
   try {
+    console.log(`[step] calling graph.invoke at ${Date.now() - requestStartedAt}ms, mode=${mode}`);
     state = await graph.invoke(null, { ...config, signal: request.signal });
+    console.log(`[step] graph.invoke returned at ${Date.now() - requestStartedAt}ms, outcome=${state.outcome}`);
   } catch (err) {
+    console.error(
+      `[step] graph.invoke threw at ${Date.now() - requestStartedAt}ms:`,
+      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    );
     if (request.signal.aborted) {
       // Cancelled (spec FR-072-074): writes nothing; the client's own fetch
       // is already aborted and will disregard whatever we send back.
