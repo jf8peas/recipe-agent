@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { LangGraphRunnableConfig } from "@langchain/langgraph";
+import { requestDeadline } from "../deadline";
 import { createChatModel, MODELS } from "../models";
 import { selectDirectionPrompt } from "../prompts";
 import { DirectionSelectionSchema, type State } from "../state";
@@ -29,12 +30,23 @@ export async function selectDirection(
     };
   }
 
-  const model = createChatModel(MODELS.default).withStructuredOutput(OutputSchema, {
+  const { timeoutMs, signal } = requestDeadline(config);
+  const model = createChatModel(MODELS.default, { timeoutMs }).withStructuredOutput(OutputSchema, {
     name: "selectDirection",
   });
-  const result = await model.invoke(
-    selectDirectionPrompt(state.ingredients, state.directions, state.constraints),
-    config,
-  );
+  const startedAt = Date.now();
+  let result: unknown;
+  try {
+    result = await model.invoke(
+      selectDirectionPrompt(state.ingredients, state.directions, state.constraints),
+      { ...config, signal },
+    );
+  } catch (err) {
+    console.error(
+      `[selectDirection] failed after ${Date.now() - startedAt}ms:`,
+      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    );
+    throw err;
+  }
   return { directionSelection: OutputSchema.parse(result).directionSelection };
 }

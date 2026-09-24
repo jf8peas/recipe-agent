@@ -300,6 +300,35 @@ elapsed time exactly the way the image call's deadline already was,
 computed fresh right before constructing its `AbortSignal.timeout(...)`
 rather than baked into a constant passed straight through.
 
+**Third addendum, found live again — this time in a completely different
+node**: after part 2 shipped, the exact same "Vercel platform-level 60s
+kill, no application error" symptom recurred, but on `critique`, not
+`finalize` — confirmed by production logs showing `graph.invoke` called at
+~4s elapsed and then nothing until the 60s platform kill, with `critique`
+as the pending stage. `critique.ts` (and every other node — `parseIngredients`,
+`proposeDirections`, `selectDirection`, `draftRecipe`, `refine`) had never
+had any of `finalize`'s deadline work applied — each was still relying
+solely on the per-attempt `STAGE_TIMEOUT_MS` × `maxRetries: 2` with nothing
+bounding the total, the original class of bug from part 1's addendum, just
+never triggered in that particular node until now.
+
+**Fix, part 3 (generalized, out of `finalize.ts` entirely)**: extracted
+`requestDeadline(config, reserveMs?)` into a new shared module,
+`lib/agent/deadline.ts` — computes `{ timeoutMs, signal }` from
+`config.configurable.requestStartedAt` (falling back to `Date.now()`) the
+same way `finalize`'s text call already did, reserving `DEFAULT_RESERVE_MS`
+(5000ms) by default. Every node now calls this once and passes the
+resulting `timeoutMs` into `createChatModel()` and the resulting `signal`
+into `.invoke()`, instead of passing `config` through unbounded.
+`finalize.ts` itself was refactored to call the shared helper for its text
+call (`requestDeadline(config, SAFETY_MARGIN_MS)`) rather than duplicating
+the same three lines locally; its image call keeps its own bespoke logic
+(the `MIN_IMAGE_BUDGET_MS` skip-threshold doesn't fit the generic helper).
+Every node also gained a `console.error` on model-call failure (previously
+silent beyond whatever the route's own stage-failure handling logged) —
+this class of bug is genuinely hard to diagnose without a timestamped trace,
+as both prior addenda here demonstrate.
+
 ## R4. Serving images to `<img>` under device-private ownership
 
 **Decision**: An unguessable, randomly-generated `image_id` (never derived

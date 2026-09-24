@@ -96,7 +96,28 @@ initial commit, so every prior feature's "playwright green" claim was
 unverified in a fully clean environment until this session fixed it (also
 fixed: pglite-under-parallel-workers flakiness, `workers: 1`). Local work
 (features 001, 003, 004, 005, 006, 007) is verified (`tsc`/`vitest`/
-`playwright` all green, twice in a row) but not yet deployed to Vercel;
-feature 007's `npm run build` and a final third full verification pass are
-still pending, and T037 (live OpenRouter smoke test) needs a real
-`OPENROUTER_API_KEY` this environment doesn't have.
+`playwright` all green, multiple times) — feature 007 is now deployed to
+Vercel.
+
+**Production incident found post-deploy, app-wide, not feature-007-specific**:
+real (non-mocked) testing on Vercel surfaced repeated
+"Task timed out after 60 seconds" platform kills — first on `finalize`
+(recipe recovered, only the photo missing — see research.md R3's addenda),
+then independently on `critique` (a stage untouched by feature 007). Root
+cause: `createChatModel()` sets `maxRetries: 2` unconditionally, and no node
+had ever bounded the *total* time across those retries to what's actually
+left of the function's 60s budget — each node's own `STAGE_TIMEOUT_MS`
+(default 45s) only bounded a single attempt. Fixed app-wide via a new shared
+`lib/agent/deadline.ts` (`requestDeadline(config, reserveMs?)`, using
+`config.configurable.requestStartedAt` — set once by
+`app/api/recipe/[sid]/step/route.ts` as its very first statement, before any
+of its own DB work) — every node (`parseIngredients`, `proposeDirections`,
+`selectDirection`, `draftRecipe`, `critique`, `refine`, `finalize`'s text
+call) now computes its model call's timeout/abort-signal from this shared
+helper instead of relying on unbounded per-attempt retries. Every node also
+now logs a `console.error` on model-call failure — this class of bug is
+genuinely undiagnosable without a timestamped trace (the finding process
+here needed several rounds of added logging to actually pinpoint). Not yet
+re-verified against a live deploy as of this writing — the fix is `tsc`/
+`vitest`/`playwright`-green locally but its actual effect on the production
+timeout has not yet been confirmed by the user re-testing.

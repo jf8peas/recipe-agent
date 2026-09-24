@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { LangGraphRunnableConfig } from "@langchain/langgraph";
+import { requestDeadline } from "../deadline";
 import { createChatModel, MODELS } from "../models";
 import { critiquePrompt } from "../prompts";
 import { CritiqueSchema, type State } from "../state";
@@ -11,13 +12,24 @@ export async function critique(
   state: State,
   config?: LangGraphRunnableConfig,
 ): Promise<Partial<State>> {
-  const model = createChatModel(MODELS.critique).withStructuredOutput(OutputSchema, {
+  const { timeoutMs, signal } = requestDeadline(config);
+  const model = createChatModel(MODELS.critique, { timeoutMs }).withStructuredOutput(OutputSchema, {
     name: "critique",
   });
-  const result = await model.invoke(
-    critiquePrompt(state.recipeDraft, state.constraints, state.critiques),
-    config,
-  );
+  const startedAt = Date.now();
+  let result: unknown;
+  try {
+    result = await model.invoke(
+      critiquePrompt(state.recipeDraft, state.constraints, state.critiques),
+      { ...config, signal },
+    );
+  } catch (err) {
+    console.error(
+      `[critique] failed after ${Date.now() - startedAt}ms:`,
+      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    );
+    throw err;
+  }
   const { critique: newCritique } = OutputSchema.parse(result);
   return { critiques: [...state.critiques, { ...newCritique, cycle: state.critiques.length + 1 }] };
 }

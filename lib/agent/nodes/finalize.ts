@@ -3,6 +3,7 @@ import type { LangGraphRunnableConfig } from "@langchain/langgraph";
 import type { ChatCompletionModality } from "openai/resources/chat/completions";
 import { insertImage } from "../../db/images";
 import { mintImageId } from "../../ids";
+import { MAX_DURATION_MS, requestDeadline } from "../deadline";
 import { createChatModel, MODELS } from "../models";
 import { dishImagePrompt, finalizePrompt } from "../prompts";
 import { DishImageSchema, FinalRecipeSchema, type DishImage, type FinalRecipe, type State } from "../state";
@@ -26,12 +27,6 @@ const DishImageCropSchema = z.object({
 export const SAFETY_MARGIN_MS = 5000;
 export const MIN_IMAGE_BUDGET_MS = 5000;
 
-// Matches every route's own `export const maxDuration = 60` (Next.js requires
-// that as a literal at each route module's top level, so it can't be imported
-// from here) — the same 60s Vercel function ceiling `finalize` already runs
-// under today.
-const MAX_DURATION_MS = 60_000;
-
 // The text call's own hard ceiling — everything up to the same safety
 // margin the image call reserves, so a slow/retrying text call can never by
 // itself exceed the function's 60s limit (`createChatModel()` sets
@@ -44,7 +39,10 @@ const MAX_DURATION_MS = 60_000;
 // exactly as any other text-call error already does — this only makes sure
 // that failure happens with enough time left for the route's own
 // stage-failure handling to actually run, instead of Vercel hard-killing
-// the whole function first.
+// the whole function first. (Now shared with every other node via
+// `../deadline`'s `requestDeadline()` — this constant stays exported for
+// tests/docs, since it's the nominal ceiling `requestDeadline(config,
+// SAFETY_MARGIN_MS)` shrinks from elapsed time.)
 export const TEXT_DEADLINE_MS = MAX_DURATION_MS - SAFETY_MARGIN_MS;
 
 function parseDataUrl(url: string): { mime: string; bytes: Buffer } | null {
@@ -156,24 +154,16 @@ export async function finalize(
   state: State,
   config?: LangGraphRunnableConfig,
 ): Promise<Partial<State>> {
-  // Prefer the *request's* own start time (set by app/api/recipe/[sid]/step/
-  // route.ts before any of its own DB work) over this node's — everything
-  // before `graph.invoke()` (ownership/rate-limit checks, the full
-  // checkpoint-history read) already eats into the same 60s ceiling and
-  // grows with every retry on a branch. Falls back to a fresh timestamp for
-  // any caller that doesn't thread this through (direct node tests,
-  // fork-replay's own re-execution past the fork point).
+  // `startedAt` prefers the *request's* own start time (set by
+  // app/api/recipe/[sid]/step/route.ts before any of its own DB work) over
+  // this node's — everything before `graph.invoke()` (ownership/rate-limit
+  // checks, the full checkpoint-history read) already eats into the same
+  // 60s ceiling and grows with every retry on a branch. Falls back to a
+  // fresh timestamp for any caller that doesn't thread this through (direct
+  // node tests, fork-replay's own re-execution past the fork point).
   const startedAt = (config?.configurable?.requestStartedAt as number | undefined) ?? Date.now();
 
-  // `AbortSignal.timeout(ms)` counts `ms` from *this call*, not from
-  // `startedAt` — so `TEXT_DEADLINE_MS` (a fixed nominal ceiling) has to be
-  // shrunk by whatever's already elapsed since the request began, the same
-  // way the image call's own deadline already is below. Without this, a
-  // slow pre-node phase (rate-limit checks, the full checkpoint-history
-  // read) would let the text call's *own* abort fire later than intended,
-  // even though `startedAt` itself was already fixed to measure from the
-  // true request start.
-  const textDeadlineMs = Math.max(0, TEXT_DEADLINE_MS - (Date.now() - startedAt));
+  const { timeoutMs: textDeadlineMs, signal: textSignal } = requestDeadline(config, SAFETY_MARGIN_MS);
   console.log(
     `[finalize] starting: model=${MODELS.default} textDeadlineMs=${textDeadlineMs} preNodeElapsedMs=${Date.now() - startedAt}`,
   );
@@ -181,9 +171,6 @@ export async function finalize(
     OutputSchema,
     { name: "finalize" },
   );
-  const textSignal = config?.signal
-    ? AbortSignal.any([config.signal, AbortSignal.timeout(textDeadlineMs)])
-    : AbortSignal.timeout(textDeadlineMs);
   const textCallStartedAt = Date.now();
   let result: unknown;
   try {
