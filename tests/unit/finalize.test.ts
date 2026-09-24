@@ -146,10 +146,31 @@ describe("finalize", () => {
     expect(testState.capturedImageTimeoutMs).toBe(MAX_DURATION_MS - 30_000 - SAFETY_MARGIN_MS);
   });
 
-  it("bounds the text call's own timeout to TEXT_DEADLINE_MS, independent of elapsed time (production timeout fix)", async () => {
+  it("bounds the text call's own timeout to TEXT_DEADLINE_MS when there's no pre-node overhead", async () => {
     await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
     expect(testState.capturedTextTimeoutMs).toBe(TEXT_DEADLINE_MS);
     expect(TEXT_DEADLINE_MS).toBe(60_000 - SAFETY_MARGIN_MS);
+  });
+
+  it("shrinks the text call's own timeout by whatever elapsed before finalize() started (production timeout fix)", async () => {
+    // Simulates real overhead before `finalize` ever runs — rate-limit
+    // checks, the full checkpoint-history read (app/api/recipe/[sid]/step/
+    // route.ts) — by threading a `requestStartedAt` that's already 20s in
+    // the past. Measuring from this node's own `Date.now()` instead (the
+    // bug actually observed in production) would have missed this entirely.
+    const requestStartedAt = testState.now - 20_000;
+    await finalize(INITIAL_STATE, {
+      configurable: { thread_id: "t1", requestStartedAt },
+    });
+    expect(testState.capturedTextTimeoutMs).toBe(TEXT_DEADLINE_MS - 20_000);
+  });
+
+  it("never passes a negative timeout to AbortSignal.timeout even when pre-node overhead already exceeds the text deadline", async () => {
+    const requestStartedAt = testState.now - (TEXT_DEADLINE_MS + 10_000);
+    await finalize(INITIAL_STATE, {
+      configurable: { thread_id: "t1", requestStartedAt },
+    });
+    expect(testState.capturedTextTimeoutMs).toBe(0);
   });
 
   it("a text-call timeout/abort still rejects finalize (unlike an image-call failure) — the stage genuinely failed", async () => {

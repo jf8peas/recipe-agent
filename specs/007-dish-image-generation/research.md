@@ -257,14 +257,48 @@ text call had no equivalent ceiling and could still (on a bad attempt) push
 the whole invocation past the function's hard limit before the route's own
 stage-failure handling ever got a chance to run.
 
-**Fix**: `finalize.ts` now also gives the text call its own hard deadline,
-`TEXT_DEADLINE_MS = MAX_DURATION_MS - SAFETY_MARGIN_MS` (55s) — the same
-`AbortSignal.any([config.signal, AbortSignal.timeout(...)])` pattern the
+**Fix, part 1**: `finalize.ts` now also gives the text call its own hard
+deadline, `TEXT_DEADLINE_MS = MAX_DURATION_MS - SAFETY_MARGIN_MS` (55s) — the
+same `AbortSignal.any([config.signal, AbortSignal.timeout(...)])` pattern the
 image call already used, applied symmetrically. This doesn't change what a
 text-call failure *means* (it's still a real stage failure, unlike an image
 failure) — it only guarantees that failure happens with enough time left for
 the route's existing stage-failure checkpoint write to actually run, instead
 of the whole function being hard-killed by the platform first.
+
+**Second addendum, found testing part 1's fix live**: the fix above still
+didn't stop a real Vercel timeout on a *retried* `finalize`. Root cause: this
+whole budget was measured from `Date.now()` captured *inside the node*, not
+from when the HTTP request actually arrived. Everything in
+`app/api/recipe/[sid]/step/route.ts` that runs before `graph.invoke()` —
+ownership/rate-limit checks, and especially the full per-branch
+checkpoint-history read (`siblingHistory`, used for the already-advanced
+guard) — already spends against the same 60s ceiling but was invisible to
+`finalize`'s own clock. That history read grows every time a branch is
+retried (each retry adds sibling checkpoints, including the extra
+"in-progress" ghost sibling from the pre-existing LangGraph
+plain-`invoke`-on-an-already-childed-checkpoint quirk documented in
+`data-model.md`'s `updateSessionThumbnail` correction and in
+`tests/e2e/dish-image.spec.ts`'s US4 test) — so the miscount got worse with
+every subsequent Regenerate click, exactly matching what was observed live.
+
+A second, independent bug compounded it: `AbortSignal.timeout(ms)` counts
+`ms` from the moment it's *called*, not from `startedAt` — so even after
+fixing where `startedAt` comes from, the text call's own
+`AbortSignal.timeout(TEXT_DEADLINE_MS)` was still using the fixed 55s
+constant verbatim, un-shrunk by whatever had already elapsed since the
+request began.
+
+**Fix, part 2**: `app/api/recipe/[sid]/step/route.ts` now captures
+`requestStartedAt = Date.now()` as its very first statement and threads it
+through `config.configurable.requestStartedAt`; `finalize.ts` prefers that
+over its own `Date.now()` (falling back to a fresh timestamp for callers
+that don't thread it through — direct node tests, fork-replay's own
+re-execution past the fork point). The text call's own deadline is now
+`Math.max(0, TEXT_DEADLINE_MS - (Date.now() - startedAt))` — shrunk by
+elapsed time exactly the way the image call's deadline already was,
+computed fresh right before constructing its `AbortSignal.timeout(...)`
+rather than baked into a constant passed straight through.
 
 ## R4. Serving images to `<img>` under device-private ownership
 

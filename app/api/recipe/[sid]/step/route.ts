@@ -36,6 +36,16 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ sid: string }> },
 ): Promise<NextResponse> {
+  // `finalize`'s own time-budget math (SAFETY_MARGIN_MS/TEXT_DEADLINE_MS,
+  // research R3) needs to know when the *function invocation* started, not
+  // just when the node itself started running — everything below this line
+  // (ownership/rate-limit DB queries, the full checkpoint-history read a few
+  // lines down) already eats into the same 60s ceiling and grows with every
+  // retry on a branch (more sibling checkpoints to read), so measuring from
+  // inside the node alone was undercounting real elapsed time and letting
+  // the platform's own hard timeout fire before finalize's internal deadline
+  // ever got a chance to (observed in production).
+  const requestStartedAt = Date.now();
   const { sid } = await params;
   const clientId = getClientId(request);
   if (!clientId) return jsonError(401, "missing-client-id", "X-Client-Id header is required.");
@@ -68,7 +78,9 @@ export async function POST(
   }
 
   const graph = getGraph();
-  const config = { configurable: { thread_id: branchId, checkpoint_id: fromCheckpointId } };
+  const config = {
+    configurable: { thread_id: branchId, checkpoint_id: fromCheckpointId, requestStartedAt },
+  };
 
   const fromSnapshot = await graph.getState(config);
   const fromCheckpointExists =

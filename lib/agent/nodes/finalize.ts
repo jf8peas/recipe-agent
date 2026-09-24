@@ -125,15 +125,31 @@ export async function finalize(
   state: State,
   config?: LangGraphRunnableConfig,
 ): Promise<Partial<State>> {
-  const startedAt = Date.now();
+  // Prefer the *request's* own start time (set by app/api/recipe/[sid]/step/
+  // route.ts before any of its own DB work) over this node's — everything
+  // before `graph.invoke()` (ownership/rate-limit checks, the full
+  // checkpoint-history read) already eats into the same 60s ceiling and
+  // grows with every retry on a branch. Falls back to a fresh timestamp for
+  // any caller that doesn't thread this through (direct node tests,
+  // fork-replay's own re-execution past the fork point).
+  const startedAt = (config?.configurable?.requestStartedAt as number | undefined) ?? Date.now();
 
-  const textModel = createChatModel(MODELS.default, { timeoutMs: TEXT_DEADLINE_MS }).withStructuredOutput(
+  // `AbortSignal.timeout(ms)` counts `ms` from *this call*, not from
+  // `startedAt` — so `TEXT_DEADLINE_MS` (a fixed nominal ceiling) has to be
+  // shrunk by whatever's already elapsed since the request began, the same
+  // way the image call's own deadline already is below. Without this, a
+  // slow pre-node phase (rate-limit checks, the full checkpoint-history
+  // read) would let the text call's *own* abort fire later than intended,
+  // even though `startedAt` itself was already fixed to measure from the
+  // true request start.
+  const textDeadlineMs = Math.max(0, TEXT_DEADLINE_MS - (Date.now() - startedAt));
+  const textModel = createChatModel(MODELS.default, { timeoutMs: textDeadlineMs }).withStructuredOutput(
     OutputSchema,
     { name: "finalize" },
   );
   const textSignal = config?.signal
-    ? AbortSignal.any([config.signal, AbortSignal.timeout(TEXT_DEADLINE_MS)])
-    : AbortSignal.timeout(TEXT_DEADLINE_MS);
+    ? AbortSignal.any([config.signal, AbortSignal.timeout(textDeadlineMs)])
+    : AbortSignal.timeout(textDeadlineMs);
   const result = await textModel.invoke(
     finalizePrompt(state.recipeDraft, state.constraints),
     { ...config, signal: textSignal },
