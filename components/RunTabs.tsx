@@ -40,6 +40,11 @@ export interface RunTabsProps {
    * server-side alongside whichever response produced `state`, never here.
    * `null`/`undefined` both render the neutral placeholder. */
   dishImageUrl?: string | null;
+  /** Regenerates just the photo, reusing the already-produced recipe
+   * (feature 007) — omitted (not just disabled) whenever it isn't
+   * meaningful (viewing history, not yet finalized, or a photo already
+   * exists), so its mere presence is `FinalRecipeView`'s visibility check. */
+  onRegenerateImage?: () => void;
 }
 
 /**
@@ -58,6 +63,7 @@ export function RunTabs({
   onEditThisStage,
   historicalDraft,
   dishImageUrl,
+  onRegenerateImage,
 }: RunTabsProps) {
   const showEditLink = !editable && isEditableTab(activeTab, visible);
   // The Tabs strip already shows tabLabel()'s own wording ("Direction
@@ -150,6 +156,7 @@ export function RunTabs({
           latestCritique={state.critiques[state.critiques.length - 1] ?? null}
           dishImage={state.dishImage}
           dishImageUrl={dishImageUrl ?? null}
+          onRegenerateImage={onRegenerateImage}
         />
       )}
 

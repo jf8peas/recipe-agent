@@ -332,15 +332,21 @@ export function useSession() {
    * `branchId`/`fromCheckpointId` from `viewed` when set; the result becomes
    * the new tip either way. */
   const step = useCallback(
-    async (mode: "step" | "retry" = "step"): Promise<StepResponse | null> => {
+    async (mode: "step" | "retry" | "retry-image" = "step"): Promise<StepResponse | null> => {
       if (!snapshot) return null;
       const sessionId = snapshot.sessionId;
       const branchId = viewed?.branchId ?? snapshot.branchId;
       const fromCheckpointId =
-        mode === "retry" && retryFromCheckpointId
+        (mode === "retry" || mode === "retry-image") && retryFromCheckpointId
           ? retryFromCheckpointId
           : (viewed?.checkpointId ?? snapshot.checkpointId);
       const sourceNext = viewed?.next ?? snapshot.next;
+      // "retry-image" (feature 007) sends the branch's own already-produced
+      // recipe back so the server can re-inject it as `finalize`'s input
+      // instead of a fresh text call re-deriving it (lib/agent/nodes/
+      // finalize.ts) — only ever called against the live tip's own final
+      // tab, so `snapshot.state.finalRecipe` (not `viewed`'s) is correct.
+      const finalRecipe = mode === "retry-image" ? snapshot.state.finalRecipe : undefined;
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -352,7 +358,7 @@ export function useSession() {
           StepResponse | { pendingSave: true; state: State; computedCheckpointHint?: string }
         >(
           `/api/recipe/${sessionId}/step`,
-          { branchId, fromCheckpointId, mode },
+          { branchId, fromCheckpointId, mode, finalRecipe },
           controller.signal,
         );
         if (!result) return null;

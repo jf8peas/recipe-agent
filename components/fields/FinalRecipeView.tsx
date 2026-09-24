@@ -1,5 +1,6 @@
 import type { Critique, DishImage as DishImageData, FinalRecipe } from "@/lib/agent/state";
 import { DishImage } from "@/components/ui/DishImage";
+import { Button } from "@/components/ui/Button";
 
 export interface FinalRecipeViewProps {
   finalRecipe: FinalRecipe;
@@ -15,6 +16,11 @@ export interface FinalRecipeViewProps {
   /** The signed `<img src>` for `dishImage`, or `null` alongside it — always
    * resolved server-side (feature 007, data-model.md §6), never here. */
   dishImageUrl: string | null;
+  /** Regenerates just the photo, reusing this same recipe (feature 007) —
+   * omitted (not just disabled) whenever it isn't meaningful; this
+   * component additionally never shows the button while a photo already
+   * exists, regardless of what the caller passes. */
+  onRegenerateImage?: () => void;
 }
 
 /** Read-only final recipe view (spec FR-022, FR-016) — includes the approximate nutrition estimate. */
@@ -25,6 +31,7 @@ export function FinalRecipeView({
   latestCritique,
   dishImage,
   dishImageUrl,
+  onRegenerateImage,
 }: FinalRecipeViewProps) {
   return (
     <>
@@ -34,8 +41,21 @@ export function FinalRecipeView({
         focalX={dishImage?.focalX}
         focalY={dishImage?.focalY}
         zoom={dishImage?.zoom}
-        style={{ width: "100%", aspectRatio: "4 / 3", marginBottom: "var(--space-4)" }}
+        style={{ width: "100%", aspectRatio: "4 / 3", marginBottom: dishImageUrl ? "var(--space-4)" : "var(--space-2)" }}
       />
+
+      {/* Only when there's genuinely no photo yet — never shown once one
+          exists, regardless of what the caller passes (belt and suspenders
+          on top of the caller's own visibility gating in app/page.tsx). */}
+      {!dishImageUrl && onRegenerateImage && (
+        <Button
+          variant="secondary"
+          onClick={onRegenerateImage}
+          style={{ marginBottom: "var(--space-4)" }}
+        >
+          Generate photo
+        </Button>
+      )}
 
       {finalizedAtRefineLimit ? (
         <div

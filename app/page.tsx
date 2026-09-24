@@ -167,7 +167,7 @@ export default function HomePage() {
    * cross-tab lock (research R11, spec FR-059) — a locked-out attempt
    * resolves to `null`, same as any other "nothing happened" outcome. */
   const guardedStep = useCallback(
-    async (mode?: "step" | "retry"): Promise<StepResponse | null> => {
+    async (mode?: "step" | "retry" | "retry-image"): Promise<StepResponse | null> => {
       const result = await advanceLock.runLocked(() => step(mode));
       return result === "locked" ? null : result;
     },
@@ -193,6 +193,16 @@ export default function HomePage() {
   // path, not a normal read) — so it falls through to whatever `snapshot`
   // already had, same as `displayedState` itself does for every other field.
   const displayedDishImageUrl = viewed?.dishImageUrl ?? snapshot?.dishImageUrl ?? null;
+  // The final tab's own "Generate photo" control (feature 007) — only ever
+  // meaningful on the live tip's own finalize (never while browsing an
+  // earlier checkpoint, which shows that checkpoint's own recorded image
+  // unchanged), only once finalize has actually succeeded, and only when
+  // there's genuinely no photo to show yet.
+  const canRegenerateImage =
+    !isViewingHistory &&
+    Boolean(retryFromCheckpointId) &&
+    snapshot?.state.outcome === "finalized" &&
+    !displayedDishImageUrl;
 
   const path = snapshot
     ? deriveRunPath(
@@ -545,6 +555,7 @@ export default function HomePage() {
                 onEditThisStage={startEdit}
                 historicalDraft={isHistoricalDraftTab ? (historicalDraftCheckpointId ? (draftCache[historicalDraftCheckpointId] ?? null) : null) : undefined}
                 dishImageUrl={displayedDishImageUrl}
+                onRegenerateImage={canRegenerateImage ? () => guardedStep("retry-image") : undefined}
               />
             </>
           )}
@@ -620,7 +631,6 @@ export default function HomePage() {
                 onStep={() => guardedStep("step")}
                 onNewSession={reset}
                 onExit={handleExitToSessions}
-                onRetryFinalize={retryFromCheckpointId ? () => guardedStep("retry") : undefined}
               />
             )}
           </div>

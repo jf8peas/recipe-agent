@@ -166,30 +166,49 @@ export async function finalize(
   // node tests, fork-replay's own re-execution past the fork point).
   const startedAt = (config?.configurable?.requestStartedAt as number | undefined) ?? Date.now();
 
-  const { timeoutMs: textDeadlineMs, signal: textSignal } = requestDeadline(config, SAFETY_MARGIN_MS);
-  console.log(
-    `[finalize] starting: model=${MODELS.default} textDeadlineMs=${textDeadlineMs} preNodeElapsedMs=${Date.now() - startedAt}`,
-  );
-  const textModel = createChatModel(MODELS.default, { timeoutMs: textDeadlineMs }).withStructuredOutput(
-    OutputSchema,
-    { name: "finalize" },
-  );
-  const textCallStartedAt = Date.now();
-  let result: unknown;
-  try {
-    result = await textModel.invoke(
-      finalizePrompt(state.recipeDraft, state.constraints),
-      { ...config, signal: textSignal },
+  // A deliberate "regenerate just the photo" request (`app/api/recipe/
+  // [sid]/step/route.ts`'s `mode: "retry-image"`) threads the branch's own
+  // already-produced recipe through `config.configurable.reuseFinalRecipe`
+  // — NOT as `graph.invoke()`'s input, which LangGraph treats as "start a
+  // fresh run from START" regardless of `checkpoint_id` (confirmed the hard
+  // way: passing it as input re-ran `parseIngredients`, not `finalize`).
+  // `configurable` is exactly the channel `requestStartedAt`/`thread_id`
+  // already use to reach a node without disturbing invoke semantics or
+  // touching checkpointed state. Recognizing this and skipping the text
+  // call is what makes that mode fast and free of another LLM call, and
+  // (just as importantly) leaves almost the whole 60s budget for the image
+  // call instead of whatever's left over after a slow text model.
+  const reuseFinalRecipe = config?.configurable?.reuseFinalRecipe as FinalRecipe | undefined;
+  let finalRecipe: FinalRecipe;
+  if (reuseFinalRecipe) {
+    console.log(`[finalize] image-only regenerate: reusing existing finalRecipe, skipping text call`);
+    finalRecipe = reuseFinalRecipe;
+  } else {
+    const { timeoutMs: textDeadlineMs, signal: textSignal } = requestDeadline(config, SAFETY_MARGIN_MS);
+    console.log(
+      `[finalize] starting: model=${MODELS.default} textDeadlineMs=${textDeadlineMs} preNodeElapsedMs=${Date.now() - startedAt}`,
     );
-  } catch (err) {
-    console.error(
-      `[finalize] text call failed after ${Date.now() - textCallStartedAt}ms:`,
-      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    const textModel = createChatModel(MODELS.default, { timeoutMs: textDeadlineMs }).withStructuredOutput(
+      OutputSchema,
+      { name: "finalize" },
     );
-    throw err;
+    const textCallStartedAt = Date.now();
+    let result: unknown;
+    try {
+      result = await textModel.invoke(
+        finalizePrompt(state.recipeDraft, state.constraints),
+        { ...config, signal: textSignal },
+      );
+    } catch (err) {
+      console.error(
+        `[finalize] text call failed after ${Date.now() - textCallStartedAt}ms:`,
+        err instanceof Error ? `${err.name}: ${err.message}` : err,
+      );
+      throw err;
+    }
+    console.log(`[finalize] text call returned after ${Date.now() - textCallStartedAt}ms`);
+    finalRecipe = OutputSchema.parse(result).finalRecipe;
   }
-  console.log(`[finalize] text call returned after ${Date.now() - textCallStartedAt}ms`);
-  const { finalRecipe } = OutputSchema.parse(result);
 
   const elapsedMs = Date.now() - startedAt;
   const imageDeadlineMs = MAX_DURATION_MS - elapsedMs - SAFETY_MARGIN_MS;

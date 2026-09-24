@@ -179,6 +179,29 @@ describe("finalize", () => {
     expect(testState.callOrder).toEqual(["text"]); // never reached the image call
   });
 
+  describe("retry-image mode (reusing an existing finalRecipe)", () => {
+    it("skips the text call entirely when config.configurable.reuseFinalRecipe is set", async () => {
+      const reuseFinalRecipe = { ...testState.finalRecipe, title: "Already-Finalized Frittata" };
+      const result = await finalize(INITIAL_STATE, {
+        configurable: { thread_id: "t1", reuseFinalRecipe },
+      });
+      expect(testState.callOrder).toEqual(["image"]); // no "text" entry at all
+      expect(result.finalRecipe).toEqual(reuseFinalRecipe);
+      expect(result.outcome).toBe("finalized");
+    });
+
+    it("gives the image call almost the entire budget when the text call is skipped", async () => {
+      const reuseFinalRecipe = testState.finalRecipe;
+      await finalize(INITIAL_STATE, {
+        configurable: { thread_id: "t1", reuseFinalRecipe },
+      });
+      // No text call ran, so elapsed time is ~0 — the image call gets
+      // essentially the full budget minus the safety margin, not whatever
+      // scraps a slow text model would otherwise have left behind.
+      expect(testState.capturedImageTimeoutMs).toBe(MAX_DURATION_MS - SAFETY_MARGIN_MS);
+    });
+  });
+
   it("skips the image call entirely once the remaining budget falls below MIN_IMAGE_BUDGET_MS", async () => {
     testState.elapsedDuringTextCallMs = MAX_DURATION_MS - MIN_IMAGE_BUDGET_MS - SAFETY_MARGIN_MS + 1;
     const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });

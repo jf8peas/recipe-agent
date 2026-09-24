@@ -175,11 +175,12 @@ test("US3: an image failure still finalizes with the full recipe and shows the p
   await expectNoA11yViolations(page);
 });
 
-/** Part 4 (US4) — retrying a finalized branch produces a new image; browsing
- * back to the pre-retry checkpoint still shows that checkpoint's own,
- * superseded image (FR-009a, FR-010). */
+/** Part 4 (US4) — the final tab's "Generate photo" control only appears
+ * while there's genuinely no photo, regenerates just the image (not the
+ * recipe text), and browsing back to a pre-retry checkpoint still shows
+ * that checkpoint's own, superseded image (FR-009a, FR-010). */
 
-test("US4: retrying finalize produces a new image, and browsing back to the pre-retry checkpoint shows its own original image", async ({
+test("US4: \"Generate photo\" only appears when the image is blank, and regenerating never re-runs the recipe text", async ({
   page,
 }) => {
   await startSession(page, ["2 eggs", "spinach"]);
@@ -190,51 +191,61 @@ test("US4: retrying finalize produces a new image, and browsing back to the pre-
   const finalRecipeSection = page.locator("h3", { hasText: "Final recipe" }).locator("..");
   const originalImage = finalRecipeSection.getByRole("img");
   await expect(originalImage).toBeVisible();
-  const originalSrc = await originalImage.getAttribute("src");
 
-  const regenerateButton = page.getByRole("button", { name: "Regenerate" });
-  await expect(regenerateButton).toBeVisible();
-  // Waits on the actual response, not just a UI settle-state, since
-  // "Start a new session" is visible both before and after this click
-  // (outcome is "finalized" either way) and wouldn't itself prove the
-  // retry's response has landed and re-rendered yet.
+  // Once a real photo exists, "Generate photo" is gone entirely — the old,
+  // always-visible full-recipe "Regenerate" control is gone for good too.
+  await expect(finalRecipeSection.getByRole("button", { name: "Generate photo" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Regenerate" })).toHaveCount(0);
+});
+
+test("US4: \"Generate photo\" regenerates just the image, reusing the existing recipe as-is, when the photo is blank", async ({
+  page,
+}) => {
+  // The fixture's image-failure sentinel is baked into the recipe's own
+  // `toBuy` (lib/agent/fake-model.ts) — since retry-image reuses that exact
+  // recipe verbatim, the sentinel persists into the regenerate attempt too,
+  // so this deterministically stays blank across both. That's a fixture
+  // limitation, not a real-world one (a real image failure has nothing to
+  // do with recipe content) — tests/contract/step.test.ts's own retry-image
+  // test already covers the "succeeds and produces a new imageId" case at
+  // the API level; this test's job is the UI wiring: the button's
+  // visibility gating and a full, successful round trip that leaves the
+  // recipe untouched.
+  await startSession(page, ["2 eggs", "spinach", "e2e-trigger-image-failure"]);
+  while (await page.getByRole("button", { name: /^Step \(/ }).isVisible()) {
+    await clickStep(page);
+  }
+
+  const finalRecipeSection = page.locator("h3", { hasText: "Final recipe" }).locator("..");
+  await expect(finalRecipeSection).toBeVisible();
+  await expect(finalRecipeSection.getByRole("img")).toHaveCount(0);
+  const titleBefore = await finalRecipeSection.locator("p").first().textContent();
+
+  const generateButton = finalRecipeSection.getByRole("button", { name: "Generate photo" });
+  await expect(generateButton).toBeVisible();
   await Promise.all([
     page.waitForResponse((res) => res.url().includes("/step") && res.request().method() === "POST"),
-    regenerateButton.click(),
+    generateButton.click(),
   ]);
-  await expect(page.getByRole("button", { name: "Start a new session" })).toBeVisible();
 
-  const retriedImage = finalRecipeSection.getByRole("img");
-  await expect(retriedImage).toBeVisible();
-  const retriedSrc = await retriedImage.getAttribute("src");
-  // A new imageId (a different path, not just a re-signed query string).
-  expect(retriedSrc?.split("?")[0]).not.toBe(originalSrc?.split("?")[0]);
+  // Recipe text is untouched — no second text call happened.
+  const titleAfter = await finalRecipeSection.locator("p").first().textContent();
+  expect(titleAfter).toBe(titleBefore);
 
-  // Browse back to the pre-retry (original) finalize checkpoint via History.
-  //
-  // 3 entries, not 2: a plain `invoke()` on an already-childed checkpoint —
-  // exactly what Retry does, per the constitution's own "confirmed safe"
-  // framing — writes an extra intermediate "in progress" sibling checkpoint
-  // alongside the real terminal one, a pre-existing LangGraph/checkpoint-
-  // postgres artifact of retrying from a checkpoint that already has a
-  // child. Confirmed pre-existing and unrelated to this feature: the
-  // already-shipped stage-failure Retry path (tests/contract/step.test.ts's
-  // "stage-failure, then a retry" case) produces the identical shape (a
-  // "normal"-kind ghost sibling, not just this feature's finalize case) —
-  // it was simply never asserted on before since no existing test checked
-  // exact timeline/checkpoint counts across a retry. Harmless (no data
-  // loss, matches the constitution's actual safety claim), just cosmetic:
-  // the real original checkpoint still renders first, chronologically.
-  await page.getByText("History").click();
-  const finalizeEntries = page.getByRole("button", { name: /^finalize,/ });
-  await expect(finalizeEntries).toHaveCount(3);
-  await finalizeEntries.first().click(); // the original, earliest of the three
-
-  await expect(page.getByText("Viewing an earlier step")).toBeVisible();
-  const historicalImage = finalRecipeSection.getByRole("img");
-  await expect(historicalImage).toBeVisible();
-  const historicalSrc = await historicalImage.getAttribute("src");
-  expect(historicalSrc?.split("?")[0]).toBe(originalSrc?.split("?")[0]);
-
+  // Still blank (the sentinel persisted into the reused recipe), so the
+  // button is still offered rather than silently disappearing.
+  await expect(finalRecipeSection.getByRole("img")).toHaveCount(0);
+  await expect(generateButton).toBeVisible();
   await expectNoA11yViolations(page);
 });
+
+// FR-009a (browsing to a superseded checkpoint still shows *that*
+// checkpoint's own recorded image) is thoroughly covered at the contract
+// level instead of here: tests/contract/step.test.ts's retry-image test
+// already asserts the pre-retry checkpoint's `dishImage.imageId` stays
+// unchanged after a successful regenerate. Reaching that scenario through
+// this e2e harness would need a blank-then-successful transition, which
+// the fake-model fixture can't produce deterministically (the image-failure
+// sentinel is baked into the reused recipe's own `toBuy`, so it persists
+// into every retry-image attempt on that same recipe) — a fixture
+// limitation, not a real-world one.

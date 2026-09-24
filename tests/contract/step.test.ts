@@ -411,18 +411,26 @@ describe("POST /api/recipe/:sid/step", () => {
     expect(successCount).toBe(failureCount);
   });
 
-  it("retrying an already-finalized checkpoint produces a new imageId, while the pre-retry checkpoint still reports its own original dishImage unchanged (US4, T031, FR-010)", async () => {
+  it("retry-image regenerates just the photo (reusing the existing recipe, no text call), while the pre-retry checkpoint still reports its own original dishImage unchanged (US4, T031, FR-010)", async () => {
     queueImageSuccess();
     const { sid, branchId, finalizeJson, preFinalizeCheckpointId } = await driveToFinalize(
       "client-retry-finalize",
     );
     const originalImageId = finalizeJson.state.dishImage.imageId;
 
-    queueResponse("finalize", () => ({ finalRecipe }));
+    // Deliberately NOT queuing a "finalize" text responder — retry-image
+    // must never call the text model at all (it reuses the recipe it's
+    // handed), so a queued-but-unconsumed responder here would prove the
+    // opposite of what this test checks.
     queueImageSuccess();
     const retryRes = await stepReq(
       sid,
-      { branchId, fromCheckpointId: preFinalizeCheckpointId, mode: "retry" },
+      {
+        branchId,
+        fromCheckpointId: preFinalizeCheckpointId,
+        mode: "retry-image",
+        finalRecipe: finalizeJson.state.finalRecipe,
+      },
       "client-retry-finalize",
     );
     expect(retryRes.status).toBe(200);
@@ -430,6 +438,8 @@ describe("POST /api/recipe/:sid/step", () => {
     expect(retryJson.kind).toBe("finalized");
     expect(retryJson.checkpointId).not.toBe(finalizeJson.checkpointId);
     expect(retryJson.state.dishImage.imageId).not.toBe(originalImageId);
+    // The recipe itself is untouched — only the photo changed.
+    expect(retryJson.state.finalRecipe).toEqual(finalizeJson.state.finalRecipe);
 
     // The pre-retry checkpoint, fetched by its own checkpoint id, still
     // reports exactly the image it originally recorded — a retry creates a

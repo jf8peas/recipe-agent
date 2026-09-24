@@ -437,3 +437,62 @@ real output:
   change to address (a future `DAILY_IMAGE_BYTES` cap could be added the same
   way other caps already work, if it becomes a real problem — out of scope
   to pre-build here).
+
+## R6. "Regenerate just the photo" — added post-deploy, from real usage
+
+**Not in the original spec** — this section documents a capability added
+after feature 007 shipped, in direct response to production testing: with a
+slow `MODEL_DEFAULT`, every "regenerate" retried the *whole* `finalize`
+stage (text and image together, per FR-010's original framing), so the slow
+text call ran again on every attempt and routinely left little or no budget
+for the image call it was supposed to be getting a new image for. The user
+asked, directly, for a control that only touches the photo.
+
+**Decision**: `FinalRecipeView`'s old always-visible "Regenerate" button
+(full recipe + photo) is removed entirely, replaced with a "Generate photo"
+button shown **only** when there's genuinely no photo yet (`!dishImageUrl`).
+Clicking it sends `mode: "retry-image"` to `/step`, which:
+
+1. Requires the client to send back the branch's own current `finalRecipe`
+   (validated server-side against `FinalRecipeSchema` — Principle II; the
+   client already has this in memory, it's what's on screen).
+2. Threads it through **`config.configurable.reuseFinalRecipe`** — not as
+   `graph.invoke()`'s input. That was the first design tried and it doesn't
+   work: passing a non-null value as `invoke()`'s input makes LangGraph
+   start a fresh run from `START`, regardless of `checkpoint_id` — confirmed
+   the hard way (it re-ran `parseIngredients`, not `finalize`, and the fake
+   model's fixture correctly failed since nothing had queued a response for
+   that node in this scenario). `configurable` is the channel
+   `requestStartedAt`/`thread_id` already use to reach a node without
+   disturbing invoke semantics or touching checkpointed state, and it works
+   for this too.
+3. `finalize.ts` checks `config.configurable.reuseFinalRecipe` first — if
+   present, it skips the text call entirely and reuses that recipe verbatim,
+   going straight to the image call with (since no text call ran) almost the
+   *entire* remaining budget, not whatever a slow text model left over.
+
+**Why this doesn't hit the retry-of-a-branched-checkpoint data-loss bug**:
+this is still a plain `graph.invoke(null, config)` — the exact call shape
+research already confirmed safe for retry-on-an-already-childed-checkpoint.
+Nothing here uses `updateState()` on critique's checkpoint (which already
+has multiple `finalize` children from prior retries) — the forbidden
+pattern the constitution warns about is specifically `updateState` creating
+a second child there, not `invoke`.
+
+**Mode naming**: `"retry"` keeps its original, pre-feature-007 meaning
+(redo a *failed* stage — unrelated to images). The bypass of `/step`'s
+`already-advanced` guard for "an already-*succeeded* `finalize` can get
+another sibling checkpoint" is now keyed specifically to `mode:
+"retry-image"`, not `"retry"` — keeping the two modes' semantics from
+blurring into each other as more feature work touches this route.
+
+**What this changes about FR-010's original framing**: FR-010 said
+"Retrying the finalize stage MUST generate a new image for that attempt,"
+written when the only way to retry finalize was the full text+image
+re-run. The server-side capability to fully re-run finalize (`mode:
+"retry"` targeting a checkpoint whose `next` is `"finalize"`) was
+intentionally *removed* along with the old button, once the narrower
+image-only path made it redundant for what users actually wanted — there is
+now no UI path to regenerate the recipe text alone on an already-finalized
+branch (only a brand-new session, or editing an earlier stage and forking,
+produce a different recipe).

@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import type { StepResponse } from "./useSession";
 
 export interface AutoRunSession {
-  step: (mode?: "step" | "retry") => Promise<StepResponse | null>;
+  step: (mode?: "step" | "retry" | "retry-image") => Promise<StepResponse | null>;
 }
 
 const STOPPING_OUTCOMES = new Set(["finalized", "ingredient-error", "stage-failure"]);

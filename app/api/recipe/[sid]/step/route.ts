@@ -15,7 +15,7 @@ import {
 import { getGraph } from "../../../../../lib/agent/runtime";
 import { buildTimeline } from "../../../../../lib/history";
 import { dishImageUrl } from "../../../../../lib/image-url";
-import type { State } from "../../../../../lib/agent/state";
+import { FinalRecipeSchema, type State } from "../../../../../lib/agent/state";
 import { isProviderCapError, providerCapEnvelope } from "../../../../../lib/agent/provider-errors";
 import { stageKind } from "../../../../../lib/stage-kind";
 
@@ -25,7 +25,15 @@ export const maxDuration = 60;
 const RequestSchema = z.object({
   branchId: z.string(),
   fromCheckpointId: z.string(),
-  mode: z.enum(["step", "retry"]).optional().default("step"),
+  // "retry" redoes a *failed* stage (unchanged, pre-feature-007 meaning).
+  // "retry-image" regenerates just the photo on an already-*succeeded*
+  // `finalize` (feature 007) — distinct from "retry" so a genuine
+  // stage-failure retry never accidentally skips finalize's text call.
+  mode: z.enum(["step", "retry", "retry-image"]).optional().default("step"),
+  // Only used (and required) for "retry-image": the branch's own
+  // already-produced recipe, sent back so it can be re-injected as
+  // `finalize`'s input instead of a fresh text call re-deriving it.
+  finalRecipe: FinalRecipeSchema.optional(),
 });
 
 function errorMessage(err: unknown): string {
@@ -54,7 +62,10 @@ export async function POST(
   if (!body.success) {
     return jsonError(400, "invalid-request", "Request body did not match the expected shape.");
   }
-  const { branchId, fromCheckpointId, mode } = body.data;
+  const { branchId, fromCheckpointId, mode, finalRecipe: reuseFinalRecipe } = body.data;
+  if (mode === "retry-image" && !reuseFinalRecipe) {
+    return jsonError(400, "invalid-request", "retry-image mode requires the existing finalRecipe.");
+  }
 
   const pool = getPool();
   const ownership = await requireOwnedSession(sid, clientId, branchId, pool);
@@ -81,7 +92,17 @@ export async function POST(
 
   const graph = getGraph();
   const config = {
-    configurable: { thread_id: branchId, checkpoint_id: fromCheckpointId, requestStartedAt },
+    configurable: {
+      thread_id: branchId,
+      checkpoint_id: fromCheckpointId,
+      requestStartedAt,
+      // Only meaningful for "retry-image" — `finalize` reads this to skip
+      // its text call and reuse the recipe as-is (research.md's fourth
+      // addendum: this must NOT be passed as `graph.invoke()`'s own input,
+      // which LangGraph treats as "start a fresh run from START" regardless
+      // of `checkpoint_id`; `configurable` reaches the node without that).
+      reuseFinalRecipe: mode === "retry-image" ? reuseFinalRecipe : undefined,
+    },
   };
 
   const fromSnapshot = await graph.getState(config);
@@ -110,20 +131,24 @@ export async function POST(
   const alreadyAdvanced = siblingHistory.some(
     (entry) => entry.parentCheckpointId === fromCheckpointId && entry.outcome !== "stage-failure",
   );
-  // Feature 007, FR-010: an explicit Retry of an already-*succeeded*
-  // `finalize` is a deliberate action (a new photo/recipe pass), not a
-  // race — allowed to create another sibling checkpoint even though one
-  // already exists. Every other stage keeps the existing "one real advance
-  // per checkpoint" guard; this doesn't generalize retry-of-success beyond
-  // the one stage the spec actually asks for.
-  const retryingFinalize = mode === "retry" && fromSnapshot.next[0] === "finalize";
-  if (alreadyAdvanced && !retryingFinalize) {
+  // Feature 007, FR-010: an explicit "regenerate the photo" on an
+  // already-*succeeded* `finalize` is a deliberate action, not a race —
+  // allowed to create another sibling checkpoint even though one already
+  // exists. Every other stage (and a plain "retry", which still means
+  // "redo a failed stage") keeps the existing "one real advance per
+  // checkpoint" guard; this doesn't generalize retry-of-success beyond the
+  // one stage/mode the spec actually asks for.
+  const retryingImageOnly = mode === "retry-image" && fromSnapshot.next[0] === "finalize";
+  if (alreadyAdvanced && !retryingImageOnly) {
     return jsonError(409, "already-advanced", "This step was already advanced.");
   }
 
   let state: State;
   try {
     console.log(`[step] calling graph.invoke at ${Date.now() - requestStartedAt}ms, mode=${mode}`);
+    // Always `null` — plain resume from `next`, unchanged for every mode.
+    // "retry-image"'s reused recipe travels via `config.configurable`
+    // (above), not as this input.
     state = await graph.invoke(null, { ...config, signal: request.signal });
     console.log(`[step] graph.invoke returned at ${Date.now() - requestStartedAt}ms, outcome=${state.outcome}`);
   } catch (err) {
