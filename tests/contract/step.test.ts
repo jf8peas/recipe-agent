@@ -419,18 +419,14 @@ describe("POST /api/recipe/:sid/step", () => {
     const originalImageId = finalizeJson.state.dishImage.imageId;
 
     // Deliberately NOT queuing a "finalize" text responder — retry-image
-    // must never call the text model at all (it reuses the recipe it's
-    // handed), so a queued-but-unconsumed responder here would prove the
-    // opposite of what this test checks.
+    // must never call the text model at all (the route reads the branch's
+    // own live `finalRecipe` straight from its current checkpoint, not from
+    // the request body — a queued-but-unconsumed text responder here would
+    // prove the opposite of what this test checks).
     queueImageSuccess();
     const retryRes = await stepReq(
       sid,
-      {
-        branchId,
-        fromCheckpointId: preFinalizeCheckpointId,
-        mode: "retry-image",
-        finalRecipe: finalizeJson.state.finalRecipe,
-      },
+      { branchId, fromCheckpointId: preFinalizeCheckpointId, mode: "retry-image" },
       "client-retry-finalize",
     );
     expect(retryRes.status).toBe(200);
@@ -454,5 +450,24 @@ describe("POST /api/recipe/:sid/step", () => {
     expect(originalRes.status).toBe(200);
     const originalJson = await originalRes.json();
     expect(originalJson.state.dishImage.imageId).toBe(originalImageId);
+  });
+
+  it("retry-image 400s when the branch has no finalized recipe yet (never sent a stale/invalid one from the client)", async () => {
+    // Regression coverage for a real production bug: the original design
+    // had the client send its own copy of `finalRecipe` back for
+    // server-side re-validation against `FinalRecipeSchema` — an
+    // older-shaped recipe (e.g. one predating the `ingredients` field)
+    // failed that validation and 400'd on every click. The fix reads the
+    // branch's own live recipe directly from its checkpoint instead, with
+    // no re-validation boundary at all; this test covers the one case that
+    // route still needs to reject: no recipe there yet.
+    const { sid, branchId, checkpointId } = await createSession("client-retry-image-no-recipe");
+    const res = await stepReq(
+      sid,
+      { branchId, fromCheckpointId: checkpointId, mode: "retry-image" },
+      "client-retry-image-no-recipe",
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("invalid-request");
   });
 });

@@ -15,7 +15,7 @@ import {
 import { getGraph } from "../../../../../lib/agent/runtime";
 import { buildTimeline } from "../../../../../lib/history";
 import { dishImageUrl } from "../../../../../lib/image-url";
-import { FinalRecipeSchema, type State } from "../../../../../lib/agent/state";
+import type { State } from "../../../../../lib/agent/state";
 import { isProviderCapError, providerCapEnvelope } from "../../../../../lib/agent/provider-errors";
 import { stageKind } from "../../../../../lib/stage-kind";
 
@@ -30,10 +30,6 @@ const RequestSchema = z.object({
   // `finalize` (feature 007) — distinct from "retry" so a genuine
   // stage-failure retry never accidentally skips finalize's text call.
   mode: z.enum(["step", "retry", "retry-image"]).optional().default("step"),
-  // Only used (and required) for "retry-image": the branch's own
-  // already-produced recipe, sent back so it can be re-injected as
-  // `finalize`'s input instead of a fresh text call re-deriving it.
-  finalRecipe: FinalRecipeSchema.optional(),
 });
 
 function errorMessage(err: unknown): string {
@@ -62,10 +58,7 @@ export async function POST(
   if (!body.success) {
     return jsonError(400, "invalid-request", "Request body did not match the expected shape.");
   }
-  const { branchId, fromCheckpointId, mode, finalRecipe: reuseFinalRecipe } = body.data;
-  if (mode === "retry-image" && !reuseFinalRecipe) {
-    return jsonError(400, "invalid-request", "retry-image mode requires the existing finalRecipe.");
-  }
+  const { branchId, fromCheckpointId, mode } = body.data;
 
   const pool = getPool();
   const ownership = await requireOwnedSession(sid, clientId, branchId, pool);
@@ -91,17 +84,36 @@ export async function POST(
   console.log(`[step] pre-graph overhead so far: ${Date.now() - requestStartedAt}ms (ownership+rate-limit checks)`);
 
   const graph = getGraph();
+
+  // "retry-image" reuses the branch's own *live* recipe, read directly from
+  // its current checkpoint rather than trusted from the client and
+  // re-validated against `FinalRecipeSchema` — a client-sent copy can be an
+  // older-shaped recipe (e.g. one predating the `ingredients` field) that
+  // no longer validates against the current schema, which surfaced in
+  // production as a 400 on every "Generate photo" click. Reading it back
+  // from the checkpoint sidesteps that entirely: it's already-recorded
+  // state being reused, not new input crossing a validation boundary.
+  let reuseFinalRecipe: State["finalRecipe"] | undefined;
+  if (mode === "retry-image") {
+    const liveTip = await graph.getState({ configurable: { thread_id: branchId } });
+    const liveFinalRecipe = (liveTip.values as State).finalRecipe;
+    if (!liveFinalRecipe) {
+      return jsonError(400, "invalid-request", "retry-image mode requires an already-finalized recipe.");
+    }
+    reuseFinalRecipe = liveFinalRecipe;
+  }
+
   const config = {
     configurable: {
       thread_id: branchId,
       checkpoint_id: fromCheckpointId,
       requestStartedAt,
-      // Only meaningful for "retry-image" — `finalize` reads this to skip
-      // its text call and reuse the recipe as-is (research.md's fourth
-      // addendum: this must NOT be passed as `graph.invoke()`'s own input,
-      // which LangGraph treats as "start a fresh run from START" regardless
-      // of `checkpoint_id`; `configurable` reaches the node without that).
-      reuseFinalRecipe: mode === "retry-image" ? reuseFinalRecipe : undefined,
+      // Only set for "retry-image" — `finalize` reads this to skip its text
+      // call and reuse the recipe as-is (research.md's fourth addendum:
+      // this must NOT be passed as `graph.invoke()`'s own input, which
+      // LangGraph treats as "start a fresh run from START" regardless of
+      // `checkpoint_id`; `configurable` reaches the node without that).
+      reuseFinalRecipe,
     },
   };
 

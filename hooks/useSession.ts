@@ -341,12 +341,6 @@ export function useSession() {
           ? retryFromCheckpointId
           : (viewed?.checkpointId ?? snapshot.checkpointId);
       const sourceNext = viewed?.next ?? snapshot.next;
-      // "retry-image" (feature 007) sends the branch's own already-produced
-      // recipe back so the server can re-inject it as `finalize`'s input
-      // instead of a fresh text call re-deriving it (lib/agent/nodes/
-      // finalize.ts) — only ever called against the live tip's own final
-      // tab, so `snapshot.state.finalRecipe` (not `viewed`'s) is correct.
-      const finalRecipe = mode === "retry-image" ? snapshot.state.finalRecipe : undefined;
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -358,7 +352,7 @@ export function useSession() {
           StepResponse | { pendingSave: true; state: State; computedCheckpointHint?: string }
         >(
           `/api/recipe/${sessionId}/step`,
-          { branchId, fromCheckpointId, mode, finalRecipe },
+          { branchId, fromCheckpointId, mode },
           controller.signal,
         );
         if (!result) return null;
