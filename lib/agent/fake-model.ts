@@ -26,11 +26,25 @@
  *   `MAX_REFINE_CYCLES` before `routeAfterCritique` forces `finalize` —
  *   `FIXED_CRITIQUE.blocking` is otherwise always `false`, so no other
  *   fixture can exercise the refine loop deterministically.
+ * - `"e2e-trigger-image-failure"` (feature 007) — `finalize`'s separate
+ *   image call throws, so the run exercises User Story 3's "recipe
+ *   survives an image failure" path deterministically. Threaded through
+ *   `finalRecipe.toBuy` the same way the blocking-critique sentinel is
+ *   (`dishImagePrompt` includes `toBuy`'s own text specifically so this
+ *   fixture can see it — critique's own prompt has no ingredients list to
+ *   read a sentinel from directly, only whatever `recipeDraft`/`finalRecipe`
+ *   already carries).
  * An ingredient line of exactly `"rock"` (case-insensitive) is classified
  * unusable, to exercise the ingredient-error path.
  */
 
 const BLOCKING_CRITIQUE_SENTINEL = "e2e-trigger-blocking-critique";
+const IMAGE_FAILURE_SENTINEL = "e2e-trigger-image-failure";
+/** A committed, valid, tiny (68-byte) 1x1 PNG — the deterministic fixture
+ * "photo" (feature 007) so e2e tests never call a real image model. */
+const FIXED_IMAGE_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const FIXED_FOCAL_POINT = { focalX: 0.5, focalY: 0.45, zoom: 1 };
 
 const failedOnce = new Set<string>();
 
@@ -118,16 +132,20 @@ function fakeResponseFor(nodeName: string, prompt: string): unknown {
       // default candidate was picked (every existing fixture) and only
       // changes for a test that edits the selection to a different one.
       const directionMatch = prompt.match(/^Dish direction: (.+?) —/m);
+      // Every stage from here on only ever sees `recipeDraft`/`finalRecipe`
+      // as JSON, never the raw ingredient lines directly — so ANY sentinel
+      // (blocking-critique, image-failure, ...) has to be threaded through
+      // `toBuy` right here to survive into critique/refine/finalize/the
+      // image call at all. Carries whichever of the two are present,
+      // together, so a spec can also combine both in one run if it needs to.
+      const carriedSentinels = [BLOCKING_CRITIQUE_SENTINEL, IMAGE_FAILURE_SENTINEL].filter((s) =>
+        prompt.includes(s),
+      );
       return {
         recipeDraft: {
           ...FIXED_DRAFT,
           title: directionMatch?.[1] ?? FIXED_DRAFT.title,
-          // critique's own prompt has no ingredients list to read a
-          // sentinel from — it only sees `recipeDraft` (as JSON) and prior
-          // critiques — so the blocking-critique sentinel is threaded
-          // through `toBuy` here, and preserved by `refine` below, so it
-          // survives into every later critique pass too.
-          toBuy: prompt.includes(BLOCKING_CRITIQUE_SENTINEL) ? [BLOCKING_CRITIQUE_SENTINEL] : FIXED_DRAFT.toBuy,
+          toBuy: carriedSentinels.length > 0 ? carriedSentinels : FIXED_DRAFT.toBuy,
         },
       };
     }
@@ -139,19 +157,34 @@ function fakeResponseFor(nodeName: string, prompt: string): unknown {
         },
       };
     case "refine": {
-      const carriesSentinel = prompt.includes(BLOCKING_CRITIQUE_SENTINEL);
-      return { recipeDraft: { ...FIXED_DRAFT, toBuy: carriesSentinel ? [BLOCKING_CRITIQUE_SENTINEL] : FIXED_DRAFT.toBuy } };
+      // `refine`'s own prompt embeds the current `recipeDraft` as JSON
+      // (which already carries any sentinel `draftRecipe` threaded above),
+      // so the same substring check re-detects and preserves it here too.
+      const carriedSentinels = [BLOCKING_CRITIQUE_SENTINEL, IMAGE_FAILURE_SENTINEL].filter((s) =>
+        prompt.includes(s),
+      );
+      return {
+        recipeDraft: {
+          ...FIXED_DRAFT,
+          toBuy: carriedSentinels.length > 0 ? carriedSentinels : FIXED_DRAFT.toBuy,
+        },
+      };
     }
     case "finalize": {
       // Mirrors draftRecipe/refine above — finalizePrompt also embeds the
       // full recipeDraft (including toBuy) as JSON, so the same substring
-      // check carries the sentinel through here too, matching the real
+      // check carries either sentinel through here too, matching the real
       // finalizePrompt's instruction to preserve toBuy rather than drop it.
-      const carriesSentinel = prompt.includes(BLOCKING_CRITIQUE_SENTINEL);
+      // `dishImagePrompt` (the separate image call, feature 007) renders
+      // `finalRecipe.toBuy` in its own text specifically so
+      // IMAGE_FAILURE_SENTINEL survives into it.
+      const sentinels = [BLOCKING_CRITIQUE_SENTINEL, IMAGE_FAILURE_SENTINEL].filter((s) =>
+        prompt.includes(s),
+      );
       return {
         finalRecipe: {
           ...FIXED_FINAL_RECIPE,
-          toBuy: carriesSentinel ? [BLOCKING_CRITIQUE_SENTINEL] : FIXED_FINAL_RECIPE.toBuy,
+          toBuy: sentinels.length > 0 ? sentinels : FIXED_FINAL_RECIPE.toBuy,
         },
       };
     }
@@ -175,6 +208,24 @@ export function createFakeChatModel() {
 
           return fakeResponseFor(opts.name, prompt);
         },
+      };
+    },
+    // Plain `.invoke()` with no `withStructuredOutput()` wrapper — the real
+    // `ChatOpenAI` supports this directly too, and `finalize`'s image call
+    // (feature 007) is the only caller in this codebase that uses it, since
+    // combining image-output modality with structured output isn't
+    // confirmed to work (research R2). Mirrors the real response shape
+    // `handleMultiModalOutput` produces: `content` is an array of a text
+    // block (the crop JSON) followed by an image block.
+    async invoke(prompt: string, _config?: unknown) {
+      if (prompt.includes(IMAGE_FAILURE_SENTINEL)) {
+        throw new Error("Simulated image failure (e2e fixture)");
+      }
+      return {
+        content: [
+          { type: "text", text: JSON.stringify(FIXED_FOCAL_POINT) },
+          { type: "image", url: `data:image/png;base64,${FIXED_IMAGE_BASE64}` },
+        ],
       };
     },
   };

@@ -1,4 +1,5 @@
-import type { Critique, FinalRecipe } from "@/lib/agent/state";
+import type { Critique, DishImage as DishImageData, FinalRecipe } from "@/lib/agent/state";
+import { DishImage } from "@/components/ui/DishImage";
 
 export interface FinalRecipeViewProps {
   finalRecipe: FinalRecipe;
@@ -8,6 +9,12 @@ export interface FinalRecipeViewProps {
   finalizedAtRefineLimit: boolean;
   refineCount: number;
   latestCritique: Critique | null;
+  /** `null` covers every "no photo" cause uniformly (FR-004) — never
+   * attempted, failed, timed out, or predates this feature. */
+  dishImage: DishImageData | null;
+  /** The signed `<img src>` for `dishImage`, or `null` alongside it — always
+   * resolved server-side (feature 007, data-model.md §6), never here. */
+  dishImageUrl: string | null;
 }
 
 /** Read-only final recipe view (spec FR-022, FR-016) — includes the approximate nutrition estimate. */
@@ -16,9 +23,20 @@ export function FinalRecipeView({
   finalizedAtRefineLimit,
   refineCount,
   latestCritique,
+  dishImage,
+  dishImageUrl,
 }: FinalRecipeViewProps) {
   return (
     <>
+      <DishImage
+        src={dishImageUrl}
+        alt={dishImage?.alt ?? `Photo of ${finalRecipe.title}`}
+        focalX={dishImage?.focalX}
+        focalY={dishImage?.focalY}
+        zoom={dishImage?.zoom}
+        style={{ width: "100%", aspectRatio: "4 / 3", marginBottom: "var(--space-4)" }}
+      />
+
       {finalizedAtRefineLimit ? (
         <div
           role="status"

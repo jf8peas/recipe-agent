@@ -3,11 +3,12 @@ import { z } from "zod";
 import { getClientId, jsonError, requireOwnedSession } from "../../../../../lib/api-helpers";
 import { getPool } from "../../../../../lib/db/pool";
 import { getBranchesForSession, insertBranch } from "../../../../../lib/db/branches";
-import { updateSessionTitle } from "../../../../../lib/db/sessions";
+import { updateSessionThumbnail, updateSessionTitle } from "../../../../../lib/db/sessions";
 import { bestAvailableTitle } from "../../../../../lib/session-title";
 import { getGraph } from "../../../../../lib/agent/runtime";
 import { buildTimeline } from "../../../../../lib/history";
 import { forkReplay } from "../../../../../lib/fork-replay";
+import { dishImageUrl } from "../../../../../lib/image-url";
 import {
   EDITABLE_FIELDS,
   FIELD_SCHEMAS,
@@ -109,6 +110,9 @@ export async function POST(
   // gated on a single "just-completed" stage (lib/session-title.ts).
   const title = bestAvailableTitle(replay.state);
   if (title) await updateSessionTitle(sid, title, pool);
+  if (replay.state.outcome === "finalized" && replay.state.dishImage) {
+    await updateSessionThumbnail(sid, replay.state.dishImage, pool);
+  }
 
   const branches = await getBranchesForSession(sid, pool);
   const timeline = await buildTimeline(graph, branches);
@@ -117,6 +121,7 @@ export async function POST(
     branchId: newThreadId,
     checkpointId: replay.checkpointId,
     state: replay.state,
+    dishImageUrl: dishImageUrl(replay.state.dishImage),
     replayFromStage,
     timeline,
   });

@@ -4,11 +4,29 @@ import { useCallback, useState } from "react";
 
 const SESSIONS_KEY = "recipe-agent.sessions";
 
+/** A session-list thumbnail (feature 007, data-model.md §6) — identically
+ * shaped whether it came from the on-device path (a live `dishImage` plus a
+ * freshly-signed URL) or `/mine`'s own response, so `SessionList`/`ListRow`
+ * render both through one code path. */
+export interface SessionThumbnail {
+  imageId: string;
+  url: string;
+  focalX: number;
+  focalY: number;
+  zoom: number | null;
+  alt: string;
+}
+
 /** One entry in the on-device session list (data-model.md § 4). */
 export interface LocalSessionEntry {
   sessionId: string;
   title: string | null;
   lastOpened: string;
+  /** `undefined` only ever appears transiently before this feature's first
+   * `touch()`/refresh writes a real value; every persisted entry has either
+   * a thumbnail object or an explicit `null` (no finalized branch yet, or
+   * its image failed). */
+  thumbnail?: SessionThumbnail | null;
 }
 
 function readLocal(): LocalSessionEntry[] {
@@ -30,7 +48,13 @@ function writeLocal(entries: LocalSessionEntry[]): void {
 }
 
 interface MineResponse {
-  sessions: { sessionId: string; title: string | null; lastActivity: string; status: string }[];
+  sessions: {
+    sessionId: string;
+    title: string | null;
+    lastActivity: string;
+    status: string;
+    thumbnail: SessionThumbnail | null;
+  }[];
 }
 
 /**
@@ -42,17 +66,32 @@ interface MineResponse {
 export function useSessionList(clientId: string | null) {
   const [entries, setEntries] = useState<LocalSessionEntry[]>(() => readLocal());
 
-  /** Records that a session was just created or opened, moving it to the front. */
-  const touch = useCallback((sessionId: string, title: string | null) => {
-    setEntries((prev) => {
-      const next = [
-        { sessionId, title, lastOpened: new Date().toISOString() },
-        ...prev.filter((e) => e.sessionId !== sessionId),
-      ];
-      writeLocal(next);
-      return next;
-    });
-  }, []);
+  /** Records that a session was just created or opened, moving it to the
+   * front. `thumbnail` is optional and tri-state: omitted (`undefined`)
+   * leaves whatever thumbnail this entry already had untouched (most
+   * `touch()` calls fire on every title change, long before a `dishImage`
+   * exists yet); passed explicitly (including `null`) replaces it — the
+   * on-device path in `app/page.tsx` passes the live, freshly-signed
+   * thumbnail once `finalize` completes (feature 007, data-model.md §6). */
+  const touch = useCallback(
+    (sessionId: string, title: string | null, thumbnail?: SessionThumbnail | null) => {
+      setEntries((prev) => {
+        const existing = prev.find((e) => e.sessionId === sessionId);
+        const next = [
+          {
+            sessionId,
+            title,
+            lastOpened: new Date().toISOString(),
+            thumbnail: thumbnail !== undefined ? thumbnail : existing?.thumbnail,
+          },
+          ...prev.filter((e) => e.sessionId !== sessionId),
+        ];
+        writeLocal(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   const remove = useCallback((sessionId: string) => {
     setEntries((prev) => {
@@ -72,6 +111,7 @@ export function useSessionList(clientId: string | null) {
         sessionId: s.sessionId,
         title: s.title,
         lastOpened: s.lastActivity,
+        thumbnail: s.thumbnail,
       }));
       setEntries(next);
       writeLocal(next);

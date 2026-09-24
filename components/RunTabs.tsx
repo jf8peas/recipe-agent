@@ -36,6 +36,10 @@ export interface RunTabsProps {
    * Omitted for every other tab, including the latest draft tab, which
    * reads `state.recipeDraft` directly as before. */
   historicalDraft?: RecipeDraft | null;
+  /** The signed `<img src>` for `state.dishImage` (feature 007) — resolved
+   * server-side alongside whichever response produced `state`, never here.
+   * `null`/`undefined` both render the neutral placeholder. */
+  dishImageUrl?: string | null;
 }
 
 /**
@@ -53,6 +57,7 @@ export function RunTabs({
   onFieldChange,
   onEditThisStage,
   historicalDraft,
+  dishImageUrl,
 }: RunTabsProps) {
   const showEditLink = !editable && isEditableTab(activeTab, visible);
   // The Tabs strip already shows tabLabel()'s own wording ("Direction
@@ -143,6 +148,8 @@ export function RunTabs({
           finalizedAtRefineLimit={finalizedAtRefineLimit(state)}
           refineCount={state.refineCount}
           latestCritique={state.critiques[state.critiques.length - 1] ?? null}
+          dishImage={state.dishImage}
+          dishImageUrl={dishImageUrl ?? null}
         />
       )}
 

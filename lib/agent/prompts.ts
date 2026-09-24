@@ -3,6 +3,7 @@ import type {
   Critique,
   DirectionSelection,
   DishDirection,
+  FinalRecipe,
   Ingredient,
   RecipeDraft,
 } from "./state";
@@ -163,4 +164,25 @@ ${constraintsBlock(constraints)}
 
 Recipe draft:
 ${JSON.stringify(recipeDraft, null, 2)}`;
+}
+
+/** Feature 007 — `finalize`'s second call (MODELS.image, not MODELS.default;
+ * see contracts/finalize-node.md). Not wrapped in `withStructuredOutput()`
+ * (research R2: combining that with image-output modality isn't confirmed
+ * to work), so the crop comes back as plain accompanying text the node
+ * parses and validates itself, not as a schema-constrained field. */
+export function dishImagePrompt(finalRecipe: FinalRecipe): string {
+  return `Generate one photo-realistic photograph of this finished dish, as it
+would appear plated and ready to eat — no illustration, no text or logos in
+the image.
+
+Dish: ${finalRecipe.title}
+Steps: ${finalRecipe.steps.map((s) => s.text).join(" ")}
+${finalRecipe.toBuy.length > 0 ? `Still needed: ${finalRecipe.toBuy.join(", ")}` : ""}
+
+Along with the image, reply with a short line of plain JSON (nothing else)
+naming the single most appetizing point to crop a thumbnail around — the
+food itself, a glossy highlight, or a garnish, never the plate's edge or
+the empty table around it:
+{"focalX": <0-1, left-to-right>, "focalY": <0-1, top-to-bottom>, "zoom": <optional, >=1>}`;
 }

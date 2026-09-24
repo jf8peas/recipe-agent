@@ -9,3 +9,10 @@ export function mintSessionId(): string {
 export function mintThreadId(): string {
   return randomUUID();
 }
+
+/** A dish image's opaque id — random, never derived from `session_id`/
+ * `thread_id` (feature 007, research R4), so it carries no session identity
+ * on its own; access is gated by `lib/image-url.ts`'s signed URL instead. */
+export function mintImageId(): string {
+  return randomUUID();
+}

@@ -60,6 +60,13 @@
   /* Stacking */
   --z-overlay: 100;
   color-scheme: light;
+
+  /* Dish image (feature 007) — shared by the final recipe tab's full image
+   * and the session list's cropped thumbnail, so both use one placeholder
+   * treatment and one corner radius. */
+  --dish-image-radius: var(--radius-md);
+  --dish-image-placeholder-bg: var(--color-border);
+  --dish-thumb-size: 56px;
 }
 
 @media (prefers-color-scheme: dark) {

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { startTestDb, type TestDb } from "../helpers/test-db";
 import { getPool } from "../../lib/db/pool";
+import { DishImageSchema } from "../../lib/agent/state";
 
 type Responder = () => unknown;
 const responders = new Map<string, Responder[]>();
@@ -10,26 +11,61 @@ function queueResponse(nodeName: string, respond: Responder) {
   responders.set(nodeName, queue);
 }
 
+// A committed, valid, tiny 1x1 PNG (feature 007) — the fixture `finalize`'s
+// separate image call "returns" whenever a test queues a success response.
+const FIXED_IMAGE_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const IMAGE_RESPONDER_KEY = "__finalize-image__";
+function queueImageSuccess() {
+  queueResponse(IMAGE_RESPONDER_KEY, () => ({
+    content: [
+      { type: "text", text: JSON.stringify({ focalX: 0.5, focalY: 0.45, zoom: 1 }) },
+      { type: "image", url: `data:image/png;base64,${FIXED_IMAGE_BASE64}` },
+    ],
+  }));
+}
+function queueImageFailure() {
+  queueResponse(IMAGE_RESPONDER_KEY, () => {
+    throw new Error("simulated image failure");
+  });
+}
+
 vi.mock("../../lib/agent/models", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/agent/models")>();
   return {
     ...actual,
-    createChatModel: () => ({
-      withStructuredOutput: (_schema: unknown, opts: { name: string }) => ({
-        invoke: async () => {
-          const queue = responders.get(opts.name);
-          const respond = queue?.shift();
-          if (!respond) throw new Error(`no scripted response queued for node "${opts.name}"`);
-          return respond();
-        },
-      }),
-    }),
+    createChatModel: (_modelId: string, options?: { timeoutMs?: number }) => {
+      // `finalize`'s image call is the only caller passing a second
+      // argument (research R3) — this is how the mock tells the two calls
+      // apart, mirroring `lib/agent/fake-model.ts`'s real split.
+      if (options) {
+        return {
+          invoke: async () => {
+            const queue = responders.get(IMAGE_RESPONDER_KEY);
+            const respond = queue?.shift();
+            if (!respond) throw new Error("no scripted response queued for the finalize image call");
+            return respond();
+          },
+        };
+      }
+      return {
+        withStructuredOutput: (_schema: unknown, opts: { name: string }) => ({
+          invoke: async () => {
+            const queue = responders.get(opts.name);
+            const respond = queue?.shift();
+            if (!respond) throw new Error(`no scripted response queued for node "${opts.name}"`);
+            return respond();
+          },
+        }),
+      };
+    },
   };
 });
 
 let testDb: TestDb;
 let startPOST: typeof import("../../app/api/recipe/start/route").POST;
 let stepPOST: typeof import("../../app/api/recipe/[sid]/step/route").POST;
+let stateGET: typeof import("../../app/api/recipe/[sid]/state/route").GET;
 
 beforeAll(async () => {
   testDb = await startTestDb();
@@ -39,8 +75,10 @@ beforeAll(async () => {
   process.env.RATE_MAX_PER_WINDOW = "1000";
   process.env.MAX_INGREDIENTS = "50";
   process.env.MAX_STAGES_PER_SESSION = "60";
+  process.env.IMAGE_URL_SECRET = "test-secret";
   ({ POST: startPOST } = await import("../../app/api/recipe/start/route"));
   ({ POST: stepPOST } = await import("../../app/api/recipe/[sid]/step/route"));
+  ({ GET: stateGET } = await import("../../app/api/recipe/[sid]/state/route"));
 });
 
 afterAll(async () => {
@@ -91,6 +129,61 @@ async function createSession(clientId: string) {
     branchId: json.branchId as string,
     checkpointId: json.checkpointId as string,
   };
+}
+
+const draft = {
+  title: "Spinach Frittata",
+  servings: 2,
+  ingredients: [{ name: "eggs", quantity: "2" }],
+  steps: [{ order: 1, text: "Whisk eggs", minutes: 2, technique: null }],
+  toBuy: [],
+};
+const finalRecipe = {
+  ...draft,
+  scaledServings: 2,
+  nutrition: { calories: 200, protein: 15, carbs: 5, fat: 10, note: "approximate" as const },
+};
+
+/** Drives a session all the way from `parseIngredients` through `finalize`
+ * over real `/step` calls (feature 007, T017) — every intermediate stage's
+ * fixture is fixed/irrelevant to these tests; only `finalize`'s own image
+ * call (queued separately via `queueImageSuccess`/`queueImageFailure`)
+ * varies between them. */
+async function driveToFinalize(clientId: string) {
+  const { sid, branchId, checkpointId } = await createSession(clientId);
+
+  queueResponse("proposeDirections", () => ({
+    directions: [direction, { ...direction, title: "Omelet" }],
+  }));
+  const afterPropose = await (await stepReq(sid, { branchId, fromCheckpointId: checkpointId }, clientId)).json();
+
+  queueResponse("selectDirection", () => ({
+    directionSelection: { selectedIndex: 0, explanation: "clear fit", clearFavorite: true },
+  }));
+  const afterSelect = await (
+    await stepReq(sid, { branchId, fromCheckpointId: afterPropose.checkpointId }, clientId)
+  ).json();
+
+  queueResponse("draftRecipe", () => ({ recipeDraft: draft }));
+  const afterDraft = await (
+    await stepReq(sid, { branchId, fromCheckpointId: afterSelect.checkpointId }, clientId)
+  ).json();
+
+  queueResponse("critique", () => ({
+    critique: { feasibility: "fine", flavorBalance: "fine", missingOrUnclear: [], blocking: false },
+  }));
+  const afterCritique = await (
+    await stepReq(sid, { branchId, fromCheckpointId: afterDraft.checkpointId }, clientId)
+  ).json();
+
+  queueResponse("finalize", () => ({ finalRecipe }));
+  const finalizeRes = await stepReq(
+    sid,
+    { branchId, fromCheckpointId: afterCritique.checkpointId },
+    clientId,
+  );
+  const finalizeJson = await finalizeRes.json();
+  return { sid, branchId, finalizeRes, finalizeJson, preFinalizeCheckpointId: afterCritique.checkpointId };
 }
 
 describe("POST /api/recipe/:sid/step", () => {
@@ -275,5 +368,79 @@ describe("POST /api/recipe/:sid/step", () => {
     } finally {
       process.env.MAX_STAGES_PER_SESSION = originalMax;
     }
+  });
+
+  it("a successful finalize's response includes a dishImage shaped per DishImageSchema, plus a ready-to-use dishImageUrl, when the image call succeeds (feature 007)", async () => {
+    queueImageSuccess();
+    const { finalizeJson } = await driveToFinalize("client-image-success");
+
+    expect(finalizeJson.kind).toBe("finalized");
+    expect(finalizeJson.state.outcome).toBe("finalized");
+    expect(DishImageSchema.safeParse(finalizeJson.state.dishImage).success).toBe(true);
+    expect(finalizeJson.dishImageUrl).toEqual(expect.stringMatching(/^\/api\/images\//));
+  });
+
+  it("an image failure still finalizes with no dishImage and no dishImageUrl", async () => {
+    queueImageFailure();
+    const { finalizeJson } = await driveToFinalize("client-image-failure");
+
+    expect(finalizeJson.kind).toBe("finalized");
+    expect(finalizeJson.state.dishImage).toBeNull();
+    expect(finalizeJson.dishImageUrl).toBeNull();
+  });
+
+  it("usage_events row count for the finalize stage is identical whether the image call succeeds or fails (FR-017 — no extra usage unit for the image call)", async () => {
+    async function stageEventCount(threadId: string): Promise<number> {
+      const { rows } = await getPool().query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM usage_events WHERE thread_id = $1 AND kind = 'stage'",
+        [threadId],
+      );
+      return rows[0]?.count ?? 0;
+    }
+
+    queueImageSuccess();
+    const success = await driveToFinalize("client-usage-image-success");
+    const successCount = await stageEventCount(success.branchId);
+
+    queueImageFailure();
+    const failure = await driveToFinalize("client-usage-image-failure");
+    const failureCount = await stageEventCount(failure.branchId);
+
+    expect(successCount).toBe(failureCount);
+  });
+
+  it("retrying an already-finalized checkpoint produces a new imageId, while the pre-retry checkpoint still reports its own original dishImage unchanged (US4, T031, FR-010)", async () => {
+    queueImageSuccess();
+    const { sid, branchId, finalizeJson, preFinalizeCheckpointId } = await driveToFinalize(
+      "client-retry-finalize",
+    );
+    const originalImageId = finalizeJson.state.dishImage.imageId;
+
+    queueResponse("finalize", () => ({ finalRecipe }));
+    queueImageSuccess();
+    const retryRes = await stepReq(
+      sid,
+      { branchId, fromCheckpointId: preFinalizeCheckpointId, mode: "retry" },
+      "client-retry-finalize",
+    );
+    expect(retryRes.status).toBe(200);
+    const retryJson = await retryRes.json();
+    expect(retryJson.kind).toBe("finalized");
+    expect(retryJson.checkpointId).not.toBe(finalizeJson.checkpointId);
+    expect(retryJson.state.dishImage.imageId).not.toBe(originalImageId);
+
+    // The pre-retry checkpoint, fetched by its own checkpoint id, still
+    // reports exactly the image it originally recorded — a retry creates a
+    // new sibling checkpoint, it doesn't rewrite history (FR-009a).
+    const originalRes = await stateGET(
+      new Request(
+        `http://localhost/api/recipe/${sid}/state?branchId=${branchId}&checkpointId=${finalizeJson.checkpointId}`,
+        { headers: { "X-Client-Id": "client-retry-finalize" } },
+      ),
+      { params: Promise.resolve({ sid }) },
+    );
+    expect(originalRes.status).toBe(200);
+    const originalJson = await originalRes.json();
+    expect(originalJson.state.dishImage.imageId).toBe(originalImageId);
   });
 });

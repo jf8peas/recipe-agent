@@ -35,7 +35,12 @@ async function main() {
     RECIPE_AGENT_FAKE_MODEL: "1",
     MODEL_DEFAULT: "fake/default",
     MODEL_CRITIQUE: "fake/critique",
+    MODEL_IMAGE: "fake/image",
     OPENROUTER_API_KEY: "fake-key-not-used-by-fake-model",
+    // Required by `lib/image-url.ts` (feature 007) — every `/step` response
+    // whose state carries a `dishImage` signs a URL for it, even in fake
+    // mode, so this must be set for `finalize` to ever complete a response.
+    IMAGE_URL_SECRET: process.env.IMAGE_URL_SECRET ?? "e2e-fake-image-url-secret",
     PUBLIC_URL: process.env.PUBLIC_URL ?? "http://localhost:3000",
     MAX_INGREDIENTS: process.env.MAX_INGREDIENTS ?? "50",
     RATE_MAX_PER_WINDOW: process.env.RATE_MAX_PER_WINDOW ?? "1000",

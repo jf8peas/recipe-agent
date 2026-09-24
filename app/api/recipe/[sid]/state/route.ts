@@ -3,6 +3,7 @@ import { getClientId, jsonError, requireOwnedSession } from "../../../../../lib/
 import { getPool } from "../../../../../lib/db/pool";
 import { getGraph } from "../../../../../lib/agent/runtime";
 import { stageKind } from "../../../../../lib/stage-kind";
+import { dishImageUrl } from "../../../../../lib/image-url";
 import type { State } from "../../../../../lib/agent/state";
 
 export const runtime = "nodejs";
@@ -40,6 +41,7 @@ export async function GET(
   return NextResponse.json({
     checkpointId: snapshot.config.configurable?.checkpoint_id,
     state,
+    dishImageUrl: dishImageUrl(state.dishImage),
     next: snapshot.next,
     kind: stageKind(state.outcome),
   });

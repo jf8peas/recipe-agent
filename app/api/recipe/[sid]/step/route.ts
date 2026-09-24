@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getClientId, jsonError, requireOwnedSession } from "../../../../../lib/api-helpers";
 import { getPool } from "../../../../../lib/db/pool";
-import { incrementStageCount, updateSessionTitle } from "../../../../../lib/db/sessions";
+import { incrementStageCount, updateSessionThumbnail, updateSessionTitle } from "../../../../../lib/db/sessions";
 import { titleForStage } from "../../../../../lib/session-title";
 import { getBranchesForSession } from "../../../../../lib/db/branches";
 import { recordUsageEvent, countClientEvents, countGlobalStageEvents } from "../../../../../lib/db/usage";
@@ -14,6 +14,7 @@ import {
 } from "../../../../../lib/limits";
 import { getGraph } from "../../../../../lib/agent/runtime";
 import { buildTimeline } from "../../../../../lib/history";
+import { dishImageUrl } from "../../../../../lib/image-url";
 import type { State } from "../../../../../lib/agent/state";
 import { isProviderCapError, providerCapEnvelope } from "../../../../../lib/agent/provider-errors";
 import { stageKind } from "../../../../../lib/stage-kind";
@@ -43,7 +44,7 @@ export async function POST(
   if (!body.success) {
     return jsonError(400, "invalid-request", "Request body did not match the expected shape.");
   }
-  const { branchId, fromCheckpointId } = body.data;
+  const { branchId, fromCheckpointId, mode } = body.data;
 
   const pool = getPool();
   const ownership = await requireOwnedSession(sid, clientId, branchId, pool);
@@ -91,7 +92,14 @@ export async function POST(
   const alreadyAdvanced = siblingHistory.some(
     (entry) => entry.parentCheckpointId === fromCheckpointId && entry.outcome !== "stage-failure",
   );
-  if (alreadyAdvanced) {
+  // Feature 007, FR-010: an explicit Retry of an already-*succeeded*
+  // `finalize` is a deliberate action (a new photo/recipe pass), not a
+  // race — allowed to create another sibling checkpoint even though one
+  // already exists. Every other stage keeps the existing "one real advance
+  // per checkpoint" guard; this doesn't generalize retry-of-success beyond
+  // the one stage the spec actually asks for.
+  const retryingFinalize = mode === "retry" && fromSnapshot.next[0] === "finalize";
+  if (alreadyAdvanced && !retryingFinalize) {
     return jsonError(409, "already-advanced", "This step was already advanced.");
   }
 
@@ -127,6 +135,7 @@ export async function POST(
       branchId,
       checkpointId: failureSnapshot.config.configurable?.checkpoint_id,
       state: failureSnapshot.values,
+      dishImageUrl: dishImageUrl((failureSnapshot.values as State).dishImage),
       next: failureSnapshot.next,
       kind: "stage-failure",
       timeline,
@@ -144,6 +153,7 @@ export async function POST(
   const completedStage = fromSnapshot.next[0];
   const title = completedStage ? titleForStage(completedStage, state) : null;
   if (title) await updateSessionTitle(sid, title, pool);
+  if (state.dishImage) await updateSessionThumbnail(sid, state.dishImage, pool);
 
   const snapshot = await graph.getState({ configurable: { thread_id: branchId } });
   const branches = await getBranchesForSession(sid, pool);
@@ -153,6 +163,7 @@ export async function POST(
     branchId,
     checkpointId: snapshot.config.configurable?.checkpoint_id,
     state,
+    dishImageUrl: dishImageUrl(state.dishImage),
     next: snapshot.next,
     kind: stageKind(state.outcome),
     timeline,

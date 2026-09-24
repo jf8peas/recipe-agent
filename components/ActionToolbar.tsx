@@ -30,6 +30,11 @@ interface ActionToolbarProps {
    * start or switch to a different one without waiting for this one to
    * finish. */
   onExit: () => void;
+  /** Re-runs `finalize` on an already-finalized branch — a new recipe pass
+   * and a new photo, not just a new crop (feature 007, FR-010). Omitted
+   * (not just disabled) whenever there's no valid checkpoint to retry from,
+   * so its mere presence is the visibility check. */
+  onRetryFinalize?: () => void;
 }
 
 const LIMIT_MESSAGES: Record<string, string> = {
@@ -56,6 +61,7 @@ export function ActionToolbar({
   onStep,
   onNewSession,
   onExit,
+  onRetryFinalize,
 }: ActionToolbarProps) {
   const done = outcome === "finalized" || outcome === "ingredient-error";
   const sessionCapped = error?.error === "session-cap";
@@ -105,6 +111,20 @@ export function ActionToolbar({
         {done && (
           <Button variant="primary" onClick={onNewSession}>
             Start a new session
+          </Button>
+        )}
+
+        {outcome === "finalized" && onRetryFinalize && (
+          // Deliberately doesn't contain the word "Retry" —
+          // `StageFailureBanner` already owns that label for its own,
+          // differently-scoped action (recovering a failed stage), and
+          // Playwright/testing-library's accessible-name matching is
+          // substring-based by default, so "Retry finalize" would still
+          // collide with a bare `{ name: "Retry" }` selector even though
+          // both buttons can be on screen at once (this one, plus "Start a
+          // new session") only in the finalized state.
+          <Button variant="secondary" onClick={onRetryFinalize} disabled={loading}>
+            {loading ? "Working…" : "Regenerate"}
           </Button>
         )}
 

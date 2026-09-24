@@ -5,16 +5,16 @@ recipe, with full time-travel (inspect / branch / edit / replay) over the graph'
 state history.
 
 <!-- SPECKIT START -->
-Active plan: [specs/006-ui-unification/plan.md](specs/006-ui-unification/plan.md)
+Active plan: [specs/007-dish-image-generation/plan.md](specs/007-dish-image-generation/plan.md)
 
-- Spec: [specs/006-ui-unification/spec.md](specs/006-ui-unification/spec.md)
-- Research: [specs/006-ui-unification/research.md](specs/006-ui-unification/research.md)
-- Data model: [specs/006-ui-unification/data-model.md](specs/006-ui-unification/data-model.md)
-- UI contracts: [specs/006-ui-unification/contracts/ui-contracts.md](specs/006-ui-unification/contracts/ui-contracts.md)
-- Quickstart: [specs/006-ui-unification/quickstart.md](specs/006-ui-unification/quickstart.md)
-- Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v4.0.0 — Principle VI amended by this feature's own plan, see research R8)
+- Spec: [specs/007-dish-image-generation/spec.md](specs/007-dish-image-generation/spec.md)
+- Research: [specs/007-dish-image-generation/research.md](specs/007-dish-image-generation/research.md) — flags one still-unresolved risk (R1/R2): which OpenRouter image-generation surface is authoritative needs a live smoke test (tasks.md T037) that no environment so far has had an `OPENROUTER_API_KEY` to run — required before trusting this in production, not before shipping the code itself.
+- Data model: [specs/007-dish-image-generation/data-model.md](specs/007-dish-image-generation/data-model.md)
+- Contracts: [specs/007-dish-image-generation/contracts/](specs/007-dish-image-generation/contracts/) (`finalize-node.md`, `image-route.md`, `mine-response.md`)
+- Quickstart: [specs/007-dish-image-generation/quickstart.md](specs/007-dish-image-generation/quickstart.md)
+- Constitution: [.specify/memory/constitution.md](.specify/memory/constitution.md) (v4.0.0 — this plan requires **no amendment**; images stay in the existing Neon database, not a new object store)
 
-Prior features (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md), [specs/003-direction-selection/plan.md](specs/003-direction-selection/plan.md), [specs/004-about-page-redesign/plan.md](specs/004-about-page-redesign/plan.md), [specs/005-agent-graph-progress/plan.md](specs/005-agent-graph-progress/plan.md), [specs/006-ui-unification/plan.md](specs/006-ui-unification/plan.md). Feature 002 ("About This App" slideshow) has been fully replaced by feature 004 — see spec 004 FR-001.
+Prior features (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/001-recipe-agent/plan.md), [specs/003-direction-selection/plan.md](specs/003-direction-selection/plan.md), [specs/004-about-page-redesign/plan.md](specs/004-about-page-redesign/plan.md), [specs/005-agent-graph-progress/plan.md](specs/005-agent-graph-progress/plan.md), [specs/006-ui-unification/plan.md](specs/006-ui-unification/plan.md). Feature 002 ("About This App" slideshow) has been fully replaced by feature 004 — see spec 004 FR-001. Feature 007 (dish images) is implemented (all 36 non-blocked tasks in [tasks.md](specs/007-dish-image-generation/tasks.md) complete, `tsc`/`vitest`/`playwright` green) but not yet deployed; T037 (the live OpenRouter smoke test) is still blocked on a real `OPENROUTER_API_KEY`.
 <!-- SPECKIT END -->
 
 ## Non-negotiables (from the constitution)
@@ -52,8 +52,11 @@ Prior features (implemented, deployed): [specs/001-recipe-agent/plan.md](specs/0
 ## Model routing
 
 `MODELS.default` → `MODEL_DEFAULT` env (general nodes); `MODELS.critique` →
-`MODEL_CRITIQUE` env (a stronger model, Opus-class). Both are OpenRouter model
-IDs.
+`MODEL_CRITIQUE` env (a stronger model, Opus-class). `MODELS.image` (feature
+007) → `MODEL_IMAGE` env, an image-generation-capable OpenRouter
+model — used only by `finalize`'s second, image-generating call, never for
+text. All three are OpenRouter model IDs, resolved only in
+`lib/agent/models.ts`.
 
 ## Current status
 
@@ -70,6 +73,30 @@ two-row `AgentGraphProgress` synced bidirectionally with stage tabs
 `Card`, `ListRow`, `TextArea`, `Spinner`, `Toggle`, `Tabs`) used across
 every screen including the About page, and a new "RA" mark/favicon
 (`app/icon.svg`) — per `design/v003/`. `components/StatePanel.tsx` is
-deleted. Local work (features 001, 003, 004, 005, 006) is verified
-(`tsc`/`vitest`/`build`/`playwright` all green, twice in a row) but not yet
-deployed to Vercel.
+deleted. Feature 007 delivered: `finalize`'s second call (`MODELS.image`)
+generates a dish photo + crop, stored in a new `images` table (never inline
+in graph state/checkpoints — `dishImage` holds only a reference plus crop
+metadata) and served via a new signed-URL route
+(`GET /api/images/[imageId]`, `lib/image-url.ts`); the final recipe tab and
+the session list (`components/ui/DishImage.tsx`, shared by both) show the
+photo or a neutral placeholder; an image failure never becomes a stage
+failure. Also added, discovered as a genuine prerequisite gap during
+implementation and confirmed with the user before building it: Retry now
+works on an already-*finalized* `finalize` too (previously Retry only ever
+reached a stage that had just failed) — `ActionToolbar`'s "Regenerate"
+button, `useSession`'s `retryFromCheckpointId` extended, and the `/step`
+route's `already-advanced` guard now has a narrow, finalize-only bypass for
+`mode: "retry"`. Also fixed along the way: a real Postgres `UPDATE ... FROM`
+restriction in `updateSessionThumbnail` (a `LEFT JOIN ON` clause can't
+reference the update target) caught by a contract test, not by planning; and
+`playwright.config.ts`, which had never actually been wired to the local
+fake-model e2e server (`scripts/e2e-server.ts`) — `testDir`, `baseURL`, and
+`webServer` were all pointed at scaffolding/production defaults from the
+initial commit, so every prior feature's "playwright green" claim was
+unverified in a fully clean environment until this session fixed it (also
+fixed: pglite-under-parallel-workers flakiness, `workers: 1`). Local work
+(features 001, 003, 004, 005, 006, 007) is verified (`tsc`/`vitest`/
+`playwright` all green, twice in a row) but not yet deployed to Vercel;
+feature 007's `npm run build` and a final third full verification pass are
+still pending, and T037 (live OpenRouter smoke test) needs a real
+`OPENROUTER_API_KEY` this environment doesn't have.

@@ -24,6 +24,10 @@ here) live under [specs/](specs/), governed by
   a two-row rebuild of the graph diagram above, stage outputs as tabs
   instead of a stacked column, and a `components/ui/` primitives layer
   used across every screen (including the About page).
+- [specs/007-dish-image-generation/](specs/007-dish-image-generation/) — a
+  photo-realistic dish image generated inside `finalize` (a second,
+  image-capable model call, not a new stage), shown on the final recipe tab
+  and as a cropped thumbnail on the session list.
 
 This README is a reader's map to the crux of the app — the agent graph — not
 a replacement for those.
@@ -102,11 +106,23 @@ flowchart TD
 | `draftRecipe` | `MODELS.default` | `ingredients`, `constraints`, `directions`, `directionSelection` | `recipeDraft` | `critique` |
 | `critique` | `MODELS.critique` (stronger model) | `recipeDraft`, `constraints`, `critiques` | `critiques` (appended) | `refine` if the latest critique is blocking and under `MAX_REFINE_CYCLES`, else `finalize` |
 | `refine` | `MODELS.default` | `recipeDraft`, latest `critique` | `recipeDraft`, `refineCount++` | `critique` |
-| `finalize` | `MODELS.default` | `recipeDraft`, `constraints` | `finalRecipe`, `outcome: "finalized"` | end |
+| `finalize` | `MODELS.default`, then `MODELS.image` | `recipeDraft`, `constraints` | `finalRecipe`, `dishImage` (nullable), `outcome: "finalized"` | end |
 
-`MODELS.default` / `MODELS.critique` resolve from the `MODEL_DEFAULT` /
-`MODEL_CRITIQUE` env vars ([lib/agent/models.ts](lib/agent/models.ts)) — swap
-models by changing env vars, never code.
+`MODELS.default` / `MODELS.critique` / `MODELS.image` resolve from the
+`MODEL_DEFAULT` / `MODEL_CRITIQUE` / `MODEL_IMAGE` env vars
+([lib/agent/models.ts](lib/agent/models.ts)) — swap models by changing env
+vars, never code.
+
+**`finalize`'s second call** ([specs/007-dish-image-generation/](specs/007-dish-image-generation/)):
+after the text call above completes, `finalize` makes one more, independent
+call — to `MODELS.image`, an image-generation-capable model, never the same
+one as `MODELS.default` — asking for a photo-realistic photo of the finished
+dish plus a small JSON crop (focal point). This is still one stage from the
+graph's point of view: no new node, no new tab, no extra pause. If it fails,
+times out, or returns something invalid, `dishImage` is simply `null` and the
+recipe finalizes exactly as it always has — an image problem never becomes a
+stage failure. See [contracts/finalize-node.md](specs/007-dish-image-generation/contracts/finalize-node.md)
+for the full execution order and time-budget split.
 
 ### The prompts
 
@@ -280,9 +296,12 @@ This is built for Vercel + Neon:
 2. Import the repo into a new Vercel project (Next.js is auto-detected).
 3. Set every env var from [.env.example](.env.example) in the Vercel
    project's settings — at minimum `DATABASE_URL`, `OPENROUTER_API_KEY`,
-   `MODEL_DEFAULT`, `MODEL_CRITIQUE`, `PUBLIC_URL` (your deployed URL),
-   `CRON_SECRET` (any random string — Vercel Cron sends it back as
-   `Authorization: Bearer $CRON_SECRET`, which `/api/cron/purge` checks).
+   `MODEL_DEFAULT`, `MODEL_CRITIQUE`, `MODEL_IMAGE`, `PUBLIC_URL` (your
+   deployed URL), `CRON_SECRET` (any random string — Vercel Cron sends it
+   back as `Authorization: Bearer $CRON_SECRET`, which `/api/cron/purge`
+   checks), and `IMAGE_URL_SECRET` (any long random string —
+   `lib/image-url.ts` throws at request time if it's unset and a session
+   actually has a dish image to sign a URL for).
 4. Deploy. The build runs `npm run vercel-build`
    ([package.json](package.json)), which applies `scripts/migrate.ts`
    (idempotent — creates LangGraph's checkpoint tables and the app's own
@@ -370,3 +389,21 @@ introspected live — see that spec's Assumptions).
   this feature delivered.
 - [specs/006-ui-unification/quickstart.md](specs/006-ui-unification/quickstart.md)
   — manual verification walkthrough for the unified screens.
+
+**Feature 007 — dish image generation & session thumbnails**:
+
+- [specs/007-dish-image-generation/spec.md](specs/007-dish-image-generation/spec.md)
+  — the five user stories (photo on the final tab, session-list thumbnails,
+  image-failure resilience, retry/fork/branch correctness, delete/purge
+  cascade) and every functional requirement.
+- [specs/007-dish-image-generation/research.md](specs/007-dish-image-generation/research.md)
+  — why `finalize` makes a second `ChatOpenAI` call with
+  `modalities: ["image","text"]` instead of a raw fetch to a separate image
+  API, the sequential time-budget split (research R3), and the signed-URL
+  design for serving device-private images to a plain `<img>` (research R4).
+- [specs/007-dish-image-generation/data-model.md](specs/007-dish-image-generation/data-model.md)
+  — the `dishImage` state field (a reference plus crop metadata, never the
+  bytes), the `images` table, and the `sessions.thumbnail_*` denormalization.
+- [specs/007-dish-image-generation/contracts/](specs/007-dish-image-generation/contracts/)
+  — `finalize`'s updated node contract, the new `GET /api/images/[imageId]`
+  route, and the additive `/mine` response change.

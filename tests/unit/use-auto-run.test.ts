@@ -10,6 +10,7 @@ function stepResponse(outcome: (typeof INITIAL_STATE)["outcome"] = "in-progress"
     branchId: "b1",
     checkpointId: "c1",
     state: { ...INITIAL_STATE, outcome },
+    dishImageUrl: null,
     next: outcome === "in-progress" ? ["proposeDirections"] : [],
     kind: outcome === "in-progress" ? "normal" : outcome,
     timeline: [],

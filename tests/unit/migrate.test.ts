@@ -20,6 +20,7 @@ describe("runMigrations", () => {
       "0001_sessions.sql",
       "0002_usage_events.sql",
       "0003_branches.sql",
+      "0004_dish_images.sql",
     ]);
 
     const second = await runMigrations(testDb.connectionString, () => {});
@@ -35,6 +36,7 @@ describe("runMigrations", () => {
       expect(names).toContain("branches");
       expect(names).toContain("usage_events");
       expect(names).toContain("checkpoints");
+      expect(names).toContain("images");
       expect(names).toContain("_app_migrations");
     } finally {
       await pool.end();

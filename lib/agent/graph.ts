@@ -7,6 +7,7 @@ import type {
   RecipeDraft,
   Critique,
   FinalRecipe,
+  DishImage,
   Outcome,
 } from "./state";
 import { parseIngredients } from "./nodes/parseIngredients";
@@ -32,6 +33,7 @@ const GraphState = Annotation.Root({
   recipeDraft: Annotation<RecipeDraft | null>(),
   critiques: Annotation<Critique[]>(),
   finalRecipe: Annotation<FinalRecipe | null>(),
+  dishImage: Annotation<DishImage | null>(),
   refineCount: Annotation<number>(),
   outcome: Annotation<Outcome>(),
   failureReason: Annotation<string | null>(),

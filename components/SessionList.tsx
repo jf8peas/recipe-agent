@@ -31,6 +31,13 @@ export function SessionList({ entries, onOpen, onDelete, onNewSession }: Session
               onOpen={() => onOpen(entry.sessionId)}
               onDelete={() => onDelete(entry.sessionId)}
               deleteLabel={`Delete session ${entry.title ?? entry.sessionId}`}
+              thumbnail={{
+                src: entry.thumbnail?.url ?? null,
+                alt: entry.thumbnail?.alt ?? "",
+                focalX: entry.thumbnail?.focalX,
+                focalY: entry.thumbnail?.focalY,
+                zoom: entry.thumbnail?.zoom,
+              }}
             />
           ))}
         </ul>

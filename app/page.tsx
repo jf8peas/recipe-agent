@@ -59,6 +59,7 @@ export default function HomePage() {
     loading,
     runningStage,
     pendingSave,
+    retryFromCheckpointId,
     error,
     restoring,
     start,
@@ -115,10 +116,31 @@ export default function HomePage() {
   // server's own progressive titling (lib/session-title.ts) so the list
   // doesn't need a full /mine refetch to pick up a newly-known title.
   const currentTitle = snapshot ? bestAvailableTitle(snapshot.state) : null;
+  // Feature 007: mirrors `updateSessionThumbnail`'s own server-side rule —
+  // only a *successful* finalize (this attempt's own `dishImage` non-null)
+  // ever updates the list's thumbnail; every other stage, and a finalize
+  // whose image failed, leaves whatever thumbnail this session already had
+  // untouched (an in-progress retry/branch must never regress the list back
+  // to the placeholder while it's still running). `currentDishImageId` is a
+  // stable primitive dep so this doesn't re-fire on every unrelated re-render.
+  const liveDishImage = snapshot?.state.outcome === "finalized" ? snapshot.state.dishImage : null;
+  const currentDishImageId = liveDishImage?.imageId ?? null;
   useEffect(() => {
-    if (snapshot?.sessionId) sessionList.touch(snapshot.sessionId, currentTitle);
+    if (!snapshot?.sessionId) return;
+    const thumbnail =
+      liveDishImage && snapshot.dishImageUrl
+        ? {
+            imageId: liveDishImage.imageId,
+            url: snapshot.dishImageUrl,
+            focalX: liveDishImage.focalX,
+            focalY: liveDishImage.focalY,
+            zoom: liveDishImage.zoom,
+            alt: liveDishImage.alt,
+          }
+        : undefined;
+    sessionList.touch(snapshot.sessionId, currentTitle, thumbnail);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot?.sessionId, currentTitle]);
+  }, [snapshot?.sessionId, currentTitle, currentDishImageId]);
 
   // Rebuild the list from /mine if localStorage came up empty (spec FR-032) —
   // private browsing, cleared site data, or a first load on this device.
@@ -165,6 +187,12 @@ export default function HomePage() {
   const isViewingHistory = viewed !== null;
   const displayedState = viewed?.state ?? pendingSave?.state ?? snapshot?.state;
   const displayedNext = viewed?.next ?? snapshot?.next ?? [];
+  // `pendingSave` (a held-but-not-yet-committed stage result) never carries
+  // its own signed URL — `/step/commit` doesn't mint one (out of this
+  // feature's scope, since a 202-then-commit is a rare write-failure retry
+  // path, not a normal read) — so it falls through to whatever `snapshot`
+  // already had, same as `displayedState` itself does for every other field.
+  const displayedDishImageUrl = viewed?.dishImageUrl ?? snapshot?.dishImageUrl ?? null;
 
   const path = snapshot
     ? deriveRunPath(
@@ -496,6 +524,7 @@ export default function HomePage() {
                   editable
                   onFieldChange={handleFieldChange}
                   onEditThisStage={startEdit}
+                  dishImageUrl={displayedDishImageUrl}
                 />
               ))}
             </div>
@@ -515,6 +544,7 @@ export default function HomePage() {
                 editable={false}
                 onEditThisStage={startEdit}
                 historicalDraft={isHistoricalDraftTab ? (historicalDraftCheckpointId ? (draftCache[historicalDraftCheckpointId] ?? null) : null) : undefined}
+                dishImageUrl={displayedDishImageUrl}
               />
             </>
           )}
@@ -590,6 +620,7 @@ export default function HomePage() {
                 onStep={() => guardedStep("step")}
                 onNewSession={reset}
                 onExit={handleExitToSessions}
+                onRetryFinalize={retryFromCheckpointId ? () => guardedStep("retry") : undefined}
               />
             )}
           </div>

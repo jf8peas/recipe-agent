@@ -10,6 +10,7 @@ const baseState: State = {
   recipeDraft: null,
   critiques: [],
   finalRecipe: null,
+  dishImage: null,
   refineCount: 0,
   outcome: "in-progress",
   failureReason: null,

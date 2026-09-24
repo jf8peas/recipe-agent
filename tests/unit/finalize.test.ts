@@ -1,0 +1,182 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// `vi.mock` factories are hoisted above imports, so every value they close
+// over has to live in a `vi.hoisted()` bag rather than a plain top-level
+// `const` (research/tasks.md T015 — the whole point of this file is
+// asserting call order and captured timing, both mutated from inside these
+// mocks).
+const testState = vi.hoisted(() => ({
+  callOrder: [] as string[],
+  capturedImageTimeoutMs: undefined as number | undefined,
+  elapsedDuringTextCallMs: 0,
+  now: 1_000_000,
+  // T027 (US3) — every way the image call's own step can go wrong, each of
+  // which must still leave `finalize` resolving normally with `dishImage:
+  // null`, never a rejected promise.
+  imageBehavior: "success" as "success" | "throw" | "aborted" | "invalid-json" | "out-of-range",
+  finalRecipe: {
+    title: "Spinach Frittata",
+    servings: 2,
+    ingredients: [],
+    steps: [],
+    toBuy: [],
+    scaledServings: 2,
+    nutrition: { calories: 200, protein: 10, carbs: 5, fat: 10, note: "approximate" as const },
+  },
+}));
+
+vi.mock("../../lib/db/images", () => ({
+  insertImage: vi.fn(async () => ({
+    id: 1,
+    image_id: "img-1",
+    thread_id: "t1",
+    bytes: Buffer.alloc(0),
+    mime: "image/png",
+    created_at: new Date(),
+  })),
+}));
+
+vi.mock("../../lib/agent/models", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/agent/models")>();
+  return {
+    ...actual,
+    createChatModel: vi.fn((_modelId: string, options?: { timeoutMs?: number }) => {
+      if (options) {
+        // The image call is the only caller that passes a second argument
+        // (research R3) — this is how the mock tells the two calls apart.
+        testState.capturedImageTimeoutMs = options.timeoutMs;
+        return {
+          invoke: async (_prompt: string, invokeConfig?: { signal?: AbortSignal }) => {
+            testState.callOrder.push("image");
+            if (testState.imageBehavior === "throw") {
+              throw new Error("simulated image failure");
+            }
+            if (testState.imageBehavior === "aborted" || invokeConfig?.signal?.aborted) {
+              const err = new Error("The operation was aborted");
+              err.name = "AbortError";
+              throw err;
+            }
+            if (testState.imageBehavior === "invalid-json") {
+              return {
+                content: [
+                  { type: "text", text: "not valid json" },
+                  { type: "image", url: "data:image/png;base64,AAAA" },
+                ],
+              };
+            }
+            if (testState.imageBehavior === "out-of-range") {
+              return {
+                content: [
+                  { type: "text", text: JSON.stringify({ focalX: 1.5, focalY: 0.5 }) },
+                  { type: "image", url: "data:image/png;base64,AAAA" },
+                ],
+              };
+            }
+            return {
+              content: [
+                { type: "text", text: JSON.stringify({ focalX: 0.5, focalY: 0.5 }) },
+                { type: "image", url: "data:image/png;base64,AAAA" },
+              ],
+            };
+          },
+        };
+      }
+      return {
+        withStructuredOutput: () => ({
+          invoke: async () => {
+            testState.callOrder.push("text");
+            // Simulates the text call itself consuming wall-clock time —
+            // `Date.now()` is spied below, so bumping this here is what
+            // "elapsed time" means for the deadline math in finalize.ts.
+            testState.now += testState.elapsedDuringTextCallMs;
+            return { finalRecipe: testState.finalRecipe };
+          },
+        }),
+      };
+    }),
+  };
+});
+
+import { finalize, SAFETY_MARGIN_MS, MIN_IMAGE_BUDGET_MS } from "../../lib/agent/nodes/finalize";
+import { INITIAL_STATE } from "../../lib/agent/state";
+
+const MAX_DURATION_MS = 60_000; // matches every route's own `maxDuration = 60`
+
+describe("finalize", () => {
+  let dateNowSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    testState.callOrder.length = 0;
+    testState.capturedImageTimeoutMs = undefined;
+    testState.elapsedDuringTextCallMs = 0;
+    testState.now = 1_000_000;
+    testState.imageBehavior = "success";
+    dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => testState.now);
+  });
+
+  afterEach(() => {
+    dateNowSpy.mockRestore();
+  });
+
+  it("always runs the text call to completion before the image call starts", async () => {
+    await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+    expect(testState.callOrder).toEqual(["text", "image"]);
+  });
+
+  it("computes the image call's deadline as MAX_DURATION_MS - elapsed - SAFETY_MARGIN_MS", async () => {
+    testState.elapsedDuringTextCallMs = 10_000;
+    await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+    expect(testState.capturedImageTimeoutMs).toBe(MAX_DURATION_MS - 10_000 - SAFETY_MARGIN_MS);
+  });
+
+  it("shrinks the computed deadline further as simulated elapsed time grows", async () => {
+    testState.elapsedDuringTextCallMs = 30_000;
+    await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+    expect(testState.capturedImageTimeoutMs).toBe(MAX_DURATION_MS - 30_000 - SAFETY_MARGIN_MS);
+  });
+
+  it("skips the image call entirely once the remaining budget falls below MIN_IMAGE_BUDGET_MS", async () => {
+    testState.elapsedDuringTextCallMs = MAX_DURATION_MS - MIN_IMAGE_BUDGET_MS - SAFETY_MARGIN_MS + 1;
+    const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+    expect(testState.callOrder).toEqual(["text"]);
+    expect(result.dishImage).toBeNull();
+    expect(result.outcome).toBe("finalized");
+  });
+
+  // US3 (T027) — every way the image call's own step can fail must still
+  // leave `finalize` resolving with the complete `finalRecipe` and
+  // `outcome: "finalized"`, never a rejected promise (FR-003/004).
+  describe("image-call failure isolation (US3)", () => {
+    it("a thrown error from the image call never rejects finalize", async () => {
+      testState.imageBehavior = "throw";
+      const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+      expect(result.finalRecipe).toEqual(testState.finalRecipe);
+      expect(result.dishImage).toBeNull();
+      expect(result.outcome).toBe("finalized");
+    });
+
+    it("an aborted image-call signal never rejects finalize", async () => {
+      testState.imageBehavior = "aborted";
+      const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+      expect(result.finalRecipe).toEqual(testState.finalRecipe);
+      expect(result.dishImage).toBeNull();
+      expect(result.outcome).toBe("finalized");
+    });
+
+    it("invalid (non-JSON) crop text never rejects finalize", async () => {
+      testState.imageBehavior = "invalid-json";
+      const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+      expect(result.finalRecipe).toEqual(testState.finalRecipe);
+      expect(result.dishImage).toBeNull();
+      expect(result.outcome).toBe("finalized");
+    });
+
+    it("an out-of-range crop value never rejects finalize", async () => {
+      testState.imageBehavior = "out-of-range";
+      const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+      expect(result.finalRecipe).toEqual(testState.finalRecipe);
+      expect(result.dishImage).toBeNull();
+      expect(result.outcome).toBe("finalized");
+    });
+  });
+});

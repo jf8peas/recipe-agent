@@ -20,6 +20,10 @@ export interface SessionSnapshot {
   branchId: string;
   checkpointId: string;
   state: State;
+  /** Ready-to-use signed `<img src>` for `state.dishImage`, or `null` when
+   * there isn't one (feature 007, data-model.md §6) — always freshly signed
+   * server-side, never computed client-side. */
+  dishImageUrl: string | null;
   next: string[];
   kind?: string;
   timeline: TimelineEntry[];
@@ -39,6 +43,7 @@ export interface HistoryResponse {
 interface StateResponse {
   checkpointId: string;
   state: State;
+  dishImageUrl: string | null;
   next: string[];
   kind: string;
 }
@@ -54,6 +59,7 @@ export interface StepResponse {
   branchId: string;
   checkpointId: string;
   state: State;
+  dishImageUrl: string | null;
   next: string[];
   kind: string;
   timeline: TimelineEntry[];
@@ -66,6 +72,7 @@ interface ForkResponse {
   branchId: string;
   checkpointId: string;
   state: State;
+  dishImageUrl: string | null;
   replayFromStage: string;
   timeline: TimelineEntry[];
 }
@@ -75,6 +82,7 @@ export interface ViewedCheckpoint {
   branchId: string;
   checkpointId: string;
   state: State;
+  dishImageUrl: string | null;
   next: string[];
   kind?: string;
 }
@@ -224,13 +232,20 @@ export function useSession() {
         branchId,
         checkpointId: stateRes.checkpointId,
         state: stateRes.state,
+        dishImageUrl: stateRes.dishImageUrl,
         next: stateRes.next,
         kind: stateRes.kind,
         timeline: historyRes.timeline,
       });
       setViewed(null);
+      // Feature 007, FR-010: a finalized tip is retryable too (a deliberate
+      // new photo/recipe pass), not just a stage-failure — both need the
+      // SAME thing, the checkpoint retrying would target (finalize's own
+      // parent), so both set this from the same `leaf.parentCheckpointId`.
       setRetryFromCheckpointId(
-        stateRes.kind === "stage-failure" ? (leaf.parentCheckpointId ?? null) : null,
+        stateRes.kind === "stage-failure" || stateRes.kind === "finalized"
+          ? (leaf.parentCheckpointId ?? null)
+          : null,
       );
       return true;
     },
@@ -257,14 +272,18 @@ export function useSession() {
         branchId: rootBranch.threadId,
         checkpointId: stateRes.checkpointId,
         state: stateRes.state,
+        dishImageUrl: stateRes.dishImageUrl,
         next: stateRes.next,
         kind: stateRes.kind,
         timeline: historyRes.timeline,
       });
-      // Resuming directly into a stage-failure tip — a Retry needs its
-      // parent, looked up from the timeline (see the `step` comment above).
+      // Resuming directly into a stage-failure OR finalized tip — a Retry
+      // needs its parent, looked up from the timeline (see the `step`
+      // comment above; feature 007, FR-010, extends this to "finalized" too).
       setRetryFromCheckpointId(
-        stateRes.kind === "stage-failure" ? (leaf.parentCheckpointId ?? null) : null,
+        stateRes.kind === "stage-failure" || stateRes.kind === "finalized"
+          ? (leaf.parentCheckpointId ?? null)
+          : null,
       );
       return true;
     },
@@ -294,7 +313,10 @@ export function useSession() {
       });
       if (!res) return;
       window.localStorage.setItem(SESSION_ID_KEY, res.sessionId);
-      setSnapshot({ ...res, kind: undefined });
+      // `/start` never reaches `finalize` in the same call, so there's never
+      // a `dishImage` yet — always `null` here, unlike every other response
+      // this hook stores.
+      setSnapshot({ ...res, dishImageUrl: null, kind: undefined });
       setHistory({ branches: [{ threadId: res.branchId, parentThreadId: null, forkedFromCheckpointId: null }], timeline: res.timeline });
       setViewed(null);
       setPendingSave(null);
@@ -371,8 +393,13 @@ export function useSession() {
           setSnapshot({ sessionId, ...res });
           setViewed(null);
           // Remember this attempt's source so a Retry targets the same
-          // parent again; clear it once a stage actually succeeds.
-          setRetryFromCheckpointId(res.kind === "stage-failure" ? fromCheckpointId : null);
+          // parent again; cleared once a stage succeeds — except a
+          // successful `finalize` itself, which stays retryable (feature
+          // 007, FR-010: a deliberate new photo/recipe pass is still a
+          // valid Retry even though the stage didn't fail).
+          setRetryFromCheckpointId(
+            res.kind === "stage-failure" || res.state.outcome === "finalized" ? fromCheckpointId : null,
+          );
         });
         void fetchHistory(sessionId);
         return res;
@@ -448,7 +475,14 @@ export function useSession() {
         `/api/recipe/${snapshot.sessionId}/state?branchId=${branchId}&checkpointId=${checkpointId}`,
       );
       if (!res) return;
-      setViewed({ branchId, checkpointId, state: res.state, next: res.next, kind: res.kind });
+      setViewed({
+        branchId,
+        checkpointId,
+        state: res.state,
+        dishImageUrl: res.dishImageUrl,
+        next: res.next,
+        kind: res.kind,
+      });
     },
     [snapshot, callApi],
   );
@@ -493,6 +527,7 @@ export function useSession() {
         branchId: res.branchId,
         checkpointId: res.checkpointId,
         state: res.state,
+        dishImageUrl: res.dishImageUrl,
         next: [res.replayFromStage],
         timeline: res.timeline,
       });
@@ -550,6 +585,11 @@ export function useSession() {
     restoring,
     runningStage,
     pendingSave,
+    /** Non-null exactly when a Retry is currently meaningful — after a
+     * stage-failure, or after a successful `finalize` (feature 007,
+     * FR-010). `null` otherwise (mid-run, or a stage other than finalize
+     * just succeeded). */
+    retryFromCheckpointId,
     start,
     step,
     cancel,

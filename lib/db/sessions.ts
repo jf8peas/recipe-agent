@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { getPool } from "./pool";
 import { SessionRowSchema, type SessionRow } from "./schema";
+import type { DishImage } from "../agent/state";
 
 export async function insertSession(
   params: { sessionId: string; clientId: string; rootThreadId: string; title?: string | null },
@@ -56,6 +57,43 @@ export async function incrementStageCount(
 
 export async function setCapped(sessionId: string, pool: Pool = getPool()): Promise<void> {
   await pool.query("UPDATE sessions SET status = 'capped' WHERE session_id = $1", [sessionId]);
+}
+
+/** Sets a session's denormalized "current best thumbnail" (feature 007,
+ * data-model.md §5) — but only if `image` is actually newer than whatever
+ * the session already points at, using `images.id`'s ordinal (not
+ * `created_at`, which isn't precise enough to be a deterministic tie-break
+ * on its own) so "most recently finalized branch wins" (spec FR-009) is
+ * race-safe as one atomic statement, not a read-then-write. A no-op if a
+ * newer image is already set — callers don't need to check first. */
+export async function updateSessionThumbnail(
+  sessionId: string,
+  image: DishImage,
+  pool: Pool = getPool(),
+): Promise<void> {
+  // A `LEFT JOIN ... ON` in an `UPDATE ... FROM` can't reference the update
+  // target (`s`) in its `ON` clause — real Postgres rejects that with
+  // "invalid reference to FROM-clause entry", not just a PGlite quirk (this
+  // was caught by tests/contract/step.test.ts, feature 007, driving a real
+  // finalize through pglite). A correlated `NOT EXISTS` is the standard
+  // rewrite: "no existing thumbnail whose `images.id` is already >= the new
+  // one's" is exactly equivalent to the original "cur_img.id IS NULL OR
+  // new_img.id > cur_img.id", and a subquery's `WHERE` can freely reference
+  // the outer UPDATE target.
+  await pool.query(
+    `UPDATE sessions s
+     SET thumbnail_image_id = $2, thumbnail_focal_x = $3, thumbnail_focal_y = $4,
+         thumbnail_zoom = $5, thumbnail_alt = $6
+     FROM images new_img
+     WHERE s.session_id = $1
+       AND new_img.image_id = $2
+       AND NOT EXISTS (
+         SELECT 1 FROM images cur_img
+         WHERE cur_img.image_id = s.thumbnail_image_id
+           AND cur_img.id >= new_img.id
+       )`,
+    [sessionId, image.imageId, image.focalX, image.focalY, image.zoom, image.alt],
+  );
 }
 
 /** Titles a session once a real recipe name is known (`lib/session-title.ts`

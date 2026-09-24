@@ -84,6 +84,21 @@ export const FinalRecipeSchema = RecipeDraftSchema.extend({
 });
 export type FinalRecipe = z.infer<typeof FinalRecipeSchema>;
 
+// Feature 007 — a reference plus crop metadata only; the bytes themselves
+// live in the `images` table (lib/db/images.ts), never here or in a
+// checkpoint (constitution Principle II/Hard Constraint 3). `null` covers
+// every "no photo" cause uniformly — never attempted, failed, timed out, or
+// predates this feature (spec FR-004) — there's no separate status field
+// because nothing reads a distinction between those causes.
+export const DishImageSchema = z.object({
+  imageId: z.string(),
+  focalX: z.number().min(0).max(1),
+  focalY: z.number().min(0).max(1),
+  zoom: z.number().min(1).nullable(),
+  alt: z.string(),
+});
+export type DishImage = z.infer<typeof DishImageSchema>;
+
 export const OutcomeSchema = z.enum([
   "in-progress",
   "finalized",
@@ -109,6 +124,7 @@ export const StateSchema = z.object({
   recipeDraft: RecipeDraftSchema.nullable(),
   critiques: z.array(CritiqueSchema),
   finalRecipe: FinalRecipeSchema.nullable(),
+  dishImage: DishImageSchema.nullable(),
   refineCount: z.number().int().nonnegative(),
   outcome: OutcomeSchema,
   failureReason: z.string().nullable(),
@@ -129,6 +145,7 @@ export const INITIAL_STATE: State = {
   recipeDraft: null,
   critiques: [],
   finalRecipe: null,
+  dishImage: null,
   refineCount: 0,
   outcome: "in-progress",
   failureReason: null,
