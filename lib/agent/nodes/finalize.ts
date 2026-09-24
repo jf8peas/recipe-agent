@@ -32,6 +32,21 @@ export const MIN_IMAGE_BUDGET_MS = 5000;
 // under today.
 const MAX_DURATION_MS = 60_000;
 
+// The text call's own hard ceiling — everything up to the same safety
+// margin the image call reserves, so a slow/retrying text call can never by
+// itself exceed the function's 60s limit (`createChatModel()` sets
+// `maxRetries: 2` on every model unconditionally, and per-attempt
+// `STAGE_TIMEOUT_MS` × up to 3 attempts can otherwise add up to well past
+// 60s with nothing bounding the total — observed in production: a Vercel
+// platform-level timeout with the recipe still fine afterwards, meaning the
+// *image* call's own budget-aware abort worked, but nothing was bounding
+// the text call the same way). A text-call timeout still fails the stage
+// exactly as any other text-call error already does — this only makes sure
+// that failure happens with enough time left for the route's own
+// stage-failure handling to actually run, instead of Vercel hard-killing
+// the whole function first.
+export const TEXT_DEADLINE_MS = MAX_DURATION_MS - SAFETY_MARGIN_MS;
+
 function parseDataUrl(url: string): { mime: string; bytes: Buffer } | null {
   const match = /^data:([^;]+);base64,(.+)$/.exec(url);
   const mime = match?.[1];
@@ -112,12 +127,16 @@ export async function finalize(
 ): Promise<Partial<State>> {
   const startedAt = Date.now();
 
-  const textModel = createChatModel(MODELS.default).withStructuredOutput(OutputSchema, {
-    name: "finalize",
-  });
+  const textModel = createChatModel(MODELS.default, { timeoutMs: TEXT_DEADLINE_MS }).withStructuredOutput(
+    OutputSchema,
+    { name: "finalize" },
+  );
+  const textSignal = config?.signal
+    ? AbortSignal.any([config.signal, AbortSignal.timeout(TEXT_DEADLINE_MS)])
+    : AbortSignal.timeout(TEXT_DEADLINE_MS);
   const result = await textModel.invoke(
     finalizePrompt(state.recipeDraft, state.constraints),
-    config,
+    { ...config, signal: textSignal },
   );
   const { finalRecipe } = OutputSchema.parse(result);
 

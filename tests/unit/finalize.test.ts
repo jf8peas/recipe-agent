@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const testState = vi.hoisted(() => ({
   callOrder: [] as string[],
   capturedImageTimeoutMs: undefined as number | undefined,
+  capturedTextTimeoutMs: undefined as number | undefined,
   elapsedDuringTextCallMs: 0,
+  textBehavior: "success" as "success" | "aborted",
   now: 1_000_000,
   // T027 (US3) — every way the image call's own step can go wrong, each of
   // which must still leave `finalize` resolving normally with `dishImage:
@@ -40,10 +42,11 @@ vi.mock("../../lib/agent/models", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/agent/models")>();
   return {
     ...actual,
-    createChatModel: vi.fn((_modelId: string, options?: { timeoutMs?: number }) => {
-      if (options) {
-        // The image call is the only caller that passes a second argument
-        // (research R3) — this is how the mock tells the two calls apart.
+    createChatModel: vi.fn((_modelId: string, options?: { timeoutMs?: number; modalities?: unknown }) => {
+      if (options?.modalities) {
+        // The image call is the only caller that passes `modalities`
+        // (research R1) — the text call now also passes `options` (its own
+        // `timeoutMs`), so `modalities` is what actually tells them apart.
         testState.capturedImageTimeoutMs = options.timeoutMs;
         return {
           invoke: async (_prompt: string, invokeConfig?: { signal?: AbortSignal }) => {
@@ -81,14 +84,20 @@ vi.mock("../../lib/agent/models", async (importOriginal) => {
           },
         };
       }
+      testState.capturedTextTimeoutMs = options?.timeoutMs;
       return {
         withStructuredOutput: () => ({
-          invoke: async () => {
+          invoke: async (_prompt: string, invokeConfig?: { signal?: AbortSignal }) => {
             testState.callOrder.push("text");
             // Simulates the text call itself consuming wall-clock time —
             // `Date.now()` is spied below, so bumping this here is what
             // "elapsed time" means for the deadline math in finalize.ts.
             testState.now += testState.elapsedDuringTextCallMs;
+            if (testState.textBehavior === "aborted" || invokeConfig?.signal?.aborted) {
+              const err = new Error("The operation was aborted");
+              err.name = "AbortError";
+              throw err;
+            }
             return { finalRecipe: testState.finalRecipe };
           },
         }),
@@ -97,7 +106,7 @@ vi.mock("../../lib/agent/models", async (importOriginal) => {
   };
 });
 
-import { finalize, SAFETY_MARGIN_MS, MIN_IMAGE_BUDGET_MS } from "../../lib/agent/nodes/finalize";
+import { finalize, SAFETY_MARGIN_MS, MIN_IMAGE_BUDGET_MS, TEXT_DEADLINE_MS } from "../../lib/agent/nodes/finalize";
 import { INITIAL_STATE } from "../../lib/agent/state";
 
 const MAX_DURATION_MS = 60_000; // matches every route's own `maxDuration = 60`
@@ -111,6 +120,8 @@ describe("finalize", () => {
     testState.elapsedDuringTextCallMs = 0;
     testState.now = 1_000_000;
     testState.imageBehavior = "success";
+    testState.textBehavior = "success";
+    testState.capturedTextTimeoutMs = undefined;
     dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => testState.now);
   });
 
@@ -133,6 +144,18 @@ describe("finalize", () => {
     testState.elapsedDuringTextCallMs = 30_000;
     await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
     expect(testState.capturedImageTimeoutMs).toBe(MAX_DURATION_MS - 30_000 - SAFETY_MARGIN_MS);
+  });
+
+  it("bounds the text call's own timeout to TEXT_DEADLINE_MS, independent of elapsed time (production timeout fix)", async () => {
+    await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+    expect(testState.capturedTextTimeoutMs).toBe(TEXT_DEADLINE_MS);
+    expect(TEXT_DEADLINE_MS).toBe(60_000 - SAFETY_MARGIN_MS);
+  });
+
+  it("a text-call timeout/abort still rejects finalize (unlike an image-call failure) — the stage genuinely failed", async () => {
+    testState.textBehavior = "aborted";
+    await expect(finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } })).rejects.toThrow();
+    expect(testState.callOrder).toEqual(["text"]); // never reached the image call
   });
 
   it("skips the image call entirely once the remaining budget falls below MIN_IMAGE_BUDGET_MS", async () => {

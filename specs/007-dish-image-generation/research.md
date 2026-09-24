@@ -243,6 +243,29 @@ sequentially (Clarification Q1 already fixed the ordering):
   it's the same race the app already tolerates and recovers from for every
   other stage.
 
+**Addendum, found during real (non-mocked) production testing, not
+planning**: the original design above bounded only the *image* call's
+worst-case duration and left the *text* call implicitly bounded by nothing
+more than `STAGE_TIMEOUT_MS` per attempt. `createChatModel()` sets
+`maxRetries: 2` unconditionally on every model it constructs (pre-existing,
+not introduced by this feature) — so a slow or flaky text call could retry
+up to 3 total attempts, each up to `STAGE_TIMEOUT_MS` (default 45s), with
+nothing capping the *sum*. Observed live: a Vercel platform-level 60s
+timeout on `finalize`, with the recipe recovered fine afterward — meaning
+the image call's own budget-aware abort worked exactly as designed, but the
+text call had no equivalent ceiling and could still (on a bad attempt) push
+the whole invocation past the function's hard limit before the route's own
+stage-failure handling ever got a chance to run.
+
+**Fix**: `finalize.ts` now also gives the text call its own hard deadline,
+`TEXT_DEADLINE_MS = MAX_DURATION_MS - SAFETY_MARGIN_MS` (55s) — the same
+`AbortSignal.any([config.signal, AbortSignal.timeout(...)])` pattern the
+image call already used, applied symmetrically. This doesn't change what a
+text-call failure *means* (it's still a real stage failure, unlike an image
+failure) — it only guarantees that failure happens with enough time left for
+the route's existing stage-failure checkpoint write to actually run, instead
+of the whole function being hard-killed by the platform first.
+
 ## R4. Serving images to `<img>` under device-private ownership
 
 **Decision**: An unguessable, randomly-generated `image_id` (never derived

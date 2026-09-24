@@ -55,10 +55,12 @@ vi.mock("../../lib/agent/models", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/agent/models")>();
   return {
     ...actual,
-    createChatModel: vi.fn((_modelId: string, options?: { timeoutMs?: number }) => {
-      // `finalize`'s image call is the only caller passing a second
-      // argument (research R3) — mirrors `lib/agent/fake-model.ts`'s real split.
-      if (options) {
+    createChatModel: vi.fn((_modelId: string, options?: { timeoutMs?: number; modalities?: unknown }) => {
+      // `finalize`'s image call is the only caller passing `modalities`
+      // (research R1) — mirrors `lib/agent/fake-model.ts`'s real split. The
+      // text call also passes `options` now (its own `timeoutMs`), so
+      // `modalities` is what actually distinguishes the two.
+      if (options?.modalities) {
         return {
           invoke: async () => {
             const queue = responders.get(IMAGE_RESPONDER_KEY);
