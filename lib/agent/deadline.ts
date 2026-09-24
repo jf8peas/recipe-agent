@@ -9,10 +9,18 @@ import type { LangGraphRunnableConfig } from "@langchain/langgraph";
 export const MAX_DURATION_MS = 60_000;
 
 /** Reserved for whatever has to happen after a node's own model call
- * returns — at minimum the LangGraph checkpoint write; `finalize`'s image
- * call additionally reserves this before its own second call (research.md
- * R3). */
-export const DEFAULT_RESERVE_MS = 5000;
+ * returns. On success that's just the LangGraph checkpoint write (and,
+ * for `finalize`'s text call, the image call that follows — research.md
+ * R3). On *failure* it's more: `app/api/recipe/[sid]/step/route.ts`'s catch
+ * block writes a stage-failure checkpoint, re-reads state, fetches
+ * branches, and rebuilds the timeline (another full checkpoint-history
+ * scan, same cost as the already-advanced guard's own read) — confirmed in
+ * production to need more than 5s on a heavily-retried branch (17+
+ * checkpoints): the text call aborted correctly with ~5s left, but the
+ * failure-cleanup path itself then ran out of that margin and got
+ * hard-killed by Vercel mid-cleanup. 10s gives that path real headroom
+ * without meaningfully shrinking any node's own model-call budget. */
+export const DEFAULT_RESERVE_MS = 10_000;
 
 /**
  * A per-node model call's own hard deadline, bound to what's actually left

@@ -3,7 +3,7 @@ import type { LangGraphRunnableConfig } from "@langchain/langgraph";
 import type { ChatCompletionModality } from "openai/resources/chat/completions";
 import { insertImage } from "../../db/images";
 import { mintImageId } from "../../ids";
-import { MAX_DURATION_MS, requestDeadline } from "../deadline";
+import { DEFAULT_RESERVE_MS, MAX_DURATION_MS, requestDeadline } from "../deadline";
 import { createChatModel, MODELS } from "../models";
 import { dishImagePrompt, finalizePrompt } from "../prompts";
 import { DishImageSchema, FinalRecipeSchema, type DishImage, type FinalRecipe, type State } from "../state";
@@ -22,9 +22,12 @@ const DishImageCropSchema = z.object({
 
 // research.md R3 — not re-derived or re-guessed anywhere else. `SAFETY_MARGIN_MS`
 // covers the image-row insert and the LangGraph checkpoint write that still
-// have to happen after the image call returns; `MIN_IMAGE_BUDGET_MS` is the
-// floor below which there's no plausible time left to get anything back.
-export const SAFETY_MARGIN_MS = 5000;
+// have to happen after the image call returns (mirrors `../deadline`'s
+// `DEFAULT_RESERVE_MS` — sourced from there, not re-picked, so the two never
+// drift apart). `MIN_IMAGE_BUDGET_MS` is the floor below which there's no
+// plausible time left to get anything back — a separate concept from the
+// reserve margin, so it keeps its own, smaller value.
+export const SAFETY_MARGIN_MS = DEFAULT_RESERVE_MS;
 export const MIN_IMAGE_BUDGET_MS = 5000;
 
 // The text call's own hard ceiling — everything up to the same safety

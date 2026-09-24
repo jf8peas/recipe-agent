@@ -329,6 +329,30 @@ silent beyond whatever the route's own stage-failure handling logged) —
 this class of bug is genuinely hard to diagnose without a timestamped trace,
 as both prior addenda here demonstrate.
 
+**Fourth addendum — the margin itself was too thin**: with parts 1–3 live, a
+real trace showed the text call correctly aborting right on its own
+schedule (49334ms against a 49335ms budget — the mechanism works), but then
+the *route's own stage-failure cleanup* — write the failure checkpoint,
+re-read state, fetch branches, rebuild the timeline (`buildTimeline`, which
+does its own full per-branch checkpoint-history scan, the same cost class as
+the already-advanced guard's `siblingHistory` read) — ran out of the ~5s
+`DEFAULT_RESERVE_MS` gave it and got hard-killed by Vercel mid-cleanup, on a
+branch with 17+ accumulated checkpoints. `DEFAULT_RESERVE_MS` (and
+`finalize.ts`'s `SAFETY_MARGIN_MS`, now sourced from it rather than
+independently picked) moved from 5000 to 10000 — the failure path is
+heavier than the success path the original number was sized for, and that
+gap widens as a branch accumulates more checkpoints. `buildTimeline`
+duplicating `siblingHistory`'s scan (instead of reusing it) is a real,
+identified optimization — deliberately not done here: it touches a shared
+utility every route calls, a larger, riskier change than the scope of an
+in-production timeout fix warranted.
+
+Separately, unrelated to this codebase: the same trace showed
+`MODEL_DEFAULT=deepseek/deepseek-v4-flash` consuming the *entire* ~49s
+budget before timing out, never returning at all — worth the operator
+checking that model's actual availability/latency on OpenRouter, independent
+of anything above.
+
 ## R4. Serving images to `<img>` under device-private ownership
 
 **Decision**: An unguessable, randomly-generated `image_id` (never derived
