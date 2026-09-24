@@ -93,7 +93,13 @@ export function FinalRecipeView({
       <p style={{ margin: "0 0 var(--space-2) 0", fontSize: "var(--text-sm)" }}>
         Serves {finalRecipe.scaledServings}
       </p>
-      {finalRecipe.ingredients.length > 0 && (
+      {/* `ingredients` was added to this schema after some already-finalized
+          checkpoints were recorded — `StateSchema` is never actually parsed
+          at runtime (data-model.md's own note re: `dishImage`), so an older
+          checkpoint's stored JSON simply lacks the key and this reads as
+          `undefined`, not `[]`. Same treatment for `toBuy`/`steps`, cheap
+          insurance against the same class of gap. */}
+      {(finalRecipe.ingredients?.length ?? 0) > 0 && (
         <ul style={{ margin: "0 0 var(--space-3) 0", paddingLeft: "var(--space-5)" }}>
           {finalRecipe.ingredients.map((ing, i) => (
             <li key={i}>
@@ -104,7 +110,7 @@ export function FinalRecipeView({
         </ul>
       )}
       <ol style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
-        {finalRecipe.steps.map((s) => (
+        {(finalRecipe.steps ?? []).map((s) => (
           <li key={s.order}>
             {s.text}
             {s.minutes ? ` (${s.minutes} min)` : ""}
@@ -112,7 +118,7 @@ export function FinalRecipeView({
           </li>
         ))}
       </ol>
-      {finalRecipe.toBuy.length > 0 && (
+      {(finalRecipe.toBuy?.length ?? 0) > 0 && (
         <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
           To buy: {finalRecipe.toBuy.join(", ")}
         </p>

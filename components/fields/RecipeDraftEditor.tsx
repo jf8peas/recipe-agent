@@ -19,7 +19,12 @@ export function RecipeDraftEditor({ recipeDraft, editable, onChange }: RecipeDra
       <>
         <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 600 }}>{recipeDraft.title}</p>
         <p style={{ margin: "0 0 var(--space-2) 0", fontSize: "var(--text-sm)" }}>Serves {recipeDraft.servings}</p>
-        {recipeDraft.ingredients.length > 0 && (
+        {/* `ingredients` was added to this schema after some checkpoints
+            were already recorded — `StateSchema` is never actually parsed
+            at runtime, so an older checkpoint's stored JSON simply lacks
+            the key and this reads as `undefined`, not `[]`. Same treatment
+            for `toBuy`/`steps`, cheap insurance against the same gap. */}
+        {(recipeDraft.ingredients?.length ?? 0) > 0 && (
           <ul style={{ margin: "0 0 var(--space-3) 0", paddingLeft: "var(--space-5)" }}>
             {recipeDraft.ingredients.map((ing, i) => (
               <li key={i}>
@@ -30,7 +35,7 @@ export function RecipeDraftEditor({ recipeDraft, editable, onChange }: RecipeDra
           </ul>
         )}
         <ol style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
-          {recipeDraft.steps.map((s) => (
+          {(recipeDraft.steps ?? []).map((s) => (
             <li key={s.order}>
               {s.text}
               {s.minutes ? ` (${s.minutes} min)` : ""}
@@ -38,7 +43,7 @@ export function RecipeDraftEditor({ recipeDraft, editable, onChange }: RecipeDra
             </li>
           ))}
         </ol>
-        {recipeDraft.toBuy.length > 0 && (
+        {(recipeDraft.toBuy?.length ?? 0) > 0 && (
           <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
             To buy: {recipeDraft.toBuy.join(", ")}
           </p>
