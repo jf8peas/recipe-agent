@@ -8,6 +8,8 @@ import { useAutoRun } from "@/hooks/useAutoRun";
 import { useAdvanceLock } from "@/hooks/useAdvanceLock";
 import { usePauseBetweenStages } from "@/hooks/usePauseBetweenStages";
 import { AppHeader } from "@/components/AppHeader";
+import { AboutPage } from "@/components/about/AboutPage";
+import { ENTRY_INTRO_BODY, ENTRY_INTRO_LINK_LABEL, ENTRY_INTRO_TITLE } from "@/lib/about-content";
 import { EntryForm } from "@/components/EntryForm";
 import { SessionList } from "@/components/SessionList";
 import { AgentGraphProgress } from "@/components/AgentGraphProgress";
@@ -88,6 +90,17 @@ export default function HomePage() {
     sessionList.entries.length > 0 ? "list" : "entry",
   );
   const [deletedNotice, setDeletedNotice] = useState(false);
+  // Owned here (not self-managed by `AppHeader`) so the entry form's intro
+  // can open About straight to its agent-graph section, not just the header.
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [aboutSection, setAboutSection] = useState<string | null>(null);
+  const openAbout = useCallback((sectionId: string | null) => {
+    setAboutSection(sectionId);
+    setAboutOpen(true);
+  }, []);
+  const aboutPage = (
+    <AboutPage open={aboutOpen} onClose={() => setAboutOpen(false)} initialFocusId={aboutSection} />
+  );
 
   // The local list started empty but got rebuilt from the server (spec
   // FR-032) — switch to the list view too. One-directional: this never
@@ -240,7 +253,8 @@ export default function HomePage() {
   if (!clientId || restoring) {
     return (
       <>
-        <AppHeader pauseBetweenStages={pauseBetweenStages} onTogglePause={setPauseBetweenStages} />
+        <AppHeader pauseBetweenStages={pauseBetweenStages} onTogglePause={setPauseBetweenStages} onOpenAbout={openAbout} />
+        {aboutPage}
         <main style={{ padding: "var(--space-6)" }}>
           <p style={{ color: "var(--color-text-muted)" }}>Loading…</p>
         </main>
@@ -329,7 +343,8 @@ export default function HomePage() {
 
   return (
     <>
-      <AppHeader pauseBetweenStages={pauseBetweenStages} onTogglePause={setPauseBetweenStages} />
+      <AppHeader pauseBetweenStages={pauseBetweenStages} onTogglePause={setPauseBetweenStages} onOpenAbout={openAbout} />
+      {aboutPage}
       <main style={{ padding: "var(--space-6)", maxWidth: "720px", margin: "0 auto" }}>
       {!snapshot ? (
         <>
@@ -350,6 +365,40 @@ export default function HomePage() {
             </>
           ) : (
             <>
+              <section
+                aria-labelledby="entry-intro-title"
+                style={{
+                  marginBottom: "var(--space-6)",
+                  padding: "var(--space-4)",
+                  border: "1px solid var(--color-border)",
+                  borderLeft: "3px solid var(--color-accent)",
+                  borderRadius: "var(--radius-md)",
+                  background: "var(--color-surface)",
+                }}
+              >
+                <h2 id="entry-intro-title" style={{ margin: 0, fontSize: "var(--text-lg)" }}>
+                  {ENTRY_INTRO_TITLE}
+                </h2>
+                <p style={{ margin: "var(--space-2) 0 var(--space-3)", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
+                  {ENTRY_INTRO_BODY}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openAbout("agent-graph")}
+                  style={{
+                    font: "inherit",
+                    fontSize: "var(--text-sm)",
+                    color: "var(--color-accent)",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  {ENTRY_INTRO_LINK_LABEL}
+                </button>
+              </section>
               <h1 style={{ fontSize: "var(--text-xl)", marginTop: 0 }}>What&apos;s in your kitchen?</h1>
               <EntryForm onSubmit={(ingredients) => start(ingredients)} disabled={loading} />
               {sessionList.entries.length > 0 && (

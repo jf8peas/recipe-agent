@@ -26,10 +26,19 @@ export const AUTHOR_BIO =
 export const TESTER_BIO =
   "Alesja Tanabe is a Senior QA Engineer in Playtech's Videobet unit with nearly 5 years of experience in gaming software quality. She specializes in black-box testing for physical gaming machines, evaluating platform reliability, edge cases, and overall player experience on Playtech's proprietary gaming platform.";
 
+// ---- Entry-form intro (the first thing a new visitor sees on `/`) ----
+
+export const ENTRY_INTRO_TITLE = "An experiment in agentic programming with LangGraph";
+
+export const ENTRY_INTRO_BODY =
+  "Your ingredients go through a graph of LLM-powered stages — parse, propose directions, pick one, draft, critique, refine, finalize. Code on the edges decides where to go next, looping draft → critique → refine until the critique passes. The run pauses after every stage so you can watch the agent work, edit any step, and branch from it.";
+
+export const ENTRY_INTRO_LINK_LABEL = "See how the agent graph works →";
+
 // ---- Pitch (FR-007) ----
 
 export const PITCH_HEADLINE =
-  "Turn a list of ingredients into a finished recipe — and never lose a version of it";
+  "An experiment in agentic programming: a LangGraph agent turns your ingredients into a recipe — and never loses a version of it";
 
 export interface PitchFlowStep {
   label: string;
@@ -38,7 +47,7 @@ export interface PitchFlowStep {
 
 export const PITCH_FLOW_STEPS: PitchFlowStep[] = [
   { label: "Ingredients", detail: '"2 eggs, spinach, feta…"' },
-  { label: "Recipe Agent", detail: "A seven-node agent pipeline" },
+  { label: "Recipe Agent", detail: "A LangGraph agent — seven LLM-powered nodes" },
   { label: "A finished recipe", detail: "Steps, timing, nutrition" },
 ];
 

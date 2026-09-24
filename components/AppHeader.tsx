@@ -17,7 +17,9 @@ export interface AppHeaderProps {
   // feature (the standard `app/layout.tsx` call site keeps using this).
   pauseBetweenStages?: boolean;
   onTogglePause?: (next: boolean) => void;
-  onOpenAbout?: () => void;
+  /** When provided, the caller owns the About page (and renders it itself);
+   * `sectionId` is the section to land on, or null for the top. */
+  onOpenAbout?: (sectionId: string | null) => void;
   // "about" mode:
   onReturn?: () => void;
 }
@@ -136,11 +138,14 @@ export function AppHeader({
 
   const pauseBetweenStages = pauseProp ?? selfPause;
   const handleTogglePause = onTogglePause ?? setSelfPause;
-  const handleOpenAbout = onOpenAbout ?? (() => setIsAboutOpen(true));
 
   function openAboutAt(sectionId: string | null) {
+    if (onOpenAbout) {
+      onOpenAbout(sectionId);
+      return;
+    }
     setAboutInitialSection(sectionId);
-    handleOpenAbout();
+    setIsAboutOpen(true);
   }
 
   function handleNavClick(link: NavLink) {
