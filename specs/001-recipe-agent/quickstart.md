@@ -19,7 +19,7 @@ cp .env.example .env.local
 `.env.local`:
 
 ```
-DATABASE_URL=postgres://…-pooler.…neon.tech/neondb?sslmode=require
+DATABASE_URL=postgres://…-pooler.…neon.tech/neondb?sslmode=verify-full
 OPENROUTER_API_KEY=sk-or-…
 MODEL_DEFAULT=openai/gpt-4.1-mini
 MODEL_CRITIQUE=anthropic/claude-sonnet-5       # a stronger model than default
