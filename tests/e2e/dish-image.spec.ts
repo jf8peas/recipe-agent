@@ -239,6 +239,41 @@ test("US4: \"Generate photo\" regenerates just the image, reusing the existing r
   await expectNoA11yViolations(page);
 });
 
+test("US4: \"Generate photo\" disables itself and shows an elapsed-time indicator while the request is in flight", async ({
+  page,
+}) => {
+  await startSession(page, ["2 eggs", "spinach", "e2e-trigger-image-failure"]);
+  while (await page.getByRole("button", { name: /^Step \(/ }).isVisible()) {
+    await clickStep(page);
+  }
+
+  const finalRecipeSection = page.locator("h3", { hasText: "Final recipe" }).locator("..");
+  const generateButton = finalRecipeSection.getByRole("button", { name: "Generate photo" });
+  await expect(generateButton).toBeVisible();
+
+  // Artificially slow the retry-image request (same interception pattern as
+  // us1-double-advance-recovery.spec.ts) so the in-flight state is actually
+  // observable instead of racing past it.
+  await page.route("**/api/recipe/*/step", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.continue();
+  });
+
+  await generateButton.click();
+
+  // While in flight: disabled (no double-fire) and reading as busy, mirroring
+  // RunningStage's own spinner + elapsed-seconds treatment for Step/Play.
+  const busyButton = finalRecipeSection.getByRole("button", { name: /^Generating photo…/ });
+  await expect(busyButton).toBeVisible();
+  await expect(busyButton).toBeDisabled();
+  await expect(busyButton).toHaveText(/Generating photo… \(\d+\.\ds\)/);
+
+  // Once the (still-blank, per the sentinel) response lands, the button
+  // reverts to its normal, clickable label rather than staying stuck busy.
+  await expect(generateButton).toBeVisible();
+  await expect(generateButton).toBeEnabled();
+});
+
 // FR-009a (browsing to a superseded checkpoint still shows *that*
 // checkpoint's own recorded image) is thoroughly covered at the contract
 // level instead of here: tests/contract/step.test.ts's retry-image test

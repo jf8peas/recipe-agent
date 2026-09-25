@@ -496,3 +496,39 @@ image-only path made it redundant for what users actually wanted — there is
 now no UI path to regenerate the recipe text alone on an already-finalized
 branch (only a brand-new session, or editing an earlier stage and forking,
 produce a different recipe).
+
+## R7. Markdown-fenced crop JSON — added post-deploy, from real usage
+
+**What was observed**: with `MODEL_IMAGE=google/gemini-2.5-flash-image` in
+production, the image call's accompanying text block reliably came back
+wrapped in a markdown code fence — ` ```json\n{"focalX": 0.5, ...}\n``` ` —
+even though `dishImagePrompt` never asks for one. The direct
+`JSON.parse(textBlock.text)` call this node had always used threw
+`SyntaxError: Unexpected token '`', "```json`... is not valid JSON` on the
+leading backtick. Per R2/R3, any crop-parse failure is already treated as an
+image failure (`dishImage: null`, `outcome: "finalized"` — never a rejected
+promise), so this never actually broke a user-visible run; it just meant
+every real attempt at generating a photo with this model silently failed.
+
+**Root cause**: this is a generic LLM habit, not specific to this model or
+prompt — chat models frequently wrap JSON output in a fenced code block when
+producing it alongside other content, independent of whether the prompt
+says "reply with JSON" or asks for a fence one way or the other.
+
+**Fix**: `finalize.ts` now runs `stripMarkdownCodeFence()` on the crop text
+before `JSON.parse`. It matches an optional ` ```json ` or plain ` ``` `
+fence wrapping the whole trimmed string and returns just the inner content;
+text that isn't fenced passes through unchanged, so a model that already
+emits plain JSON is unaffected. The crop-parse `catch` block also now logs
+the raw (untruncated-to-300-chars) text on failure — previously a parse
+failure was indistinguishable from any other crop-shape problem in the
+logs, which is what made this take a second production report to diagnose
+correctly instead of one.
+
+**Test coverage**: `tests/unit/finalize.test.ts` adds two scenarios to the
+mocked image call: `"markdown-fenced-json"` (fenced crop JSON plus a valid
+image block — asserts `dishImage` is produced with the correct
+`focalX`/`focalY`/`zoom`) and `"markdown-fenced-json-no-image"` (fenced crop
+text with no image block at all, `response.content` not even an array —
+asserts graceful `dishImage: null`, matching every other image-failure
+mode).

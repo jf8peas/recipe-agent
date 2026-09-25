@@ -556,6 +556,7 @@ export default function HomePage() {
                 historicalDraft={isHistoricalDraftTab ? (historicalDraftCheckpointId ? (draftCache[historicalDraftCheckpointId] ?? null) : null) : undefined}
                 dishImageUrl={displayedDishImageUrl}
                 onRegenerateImage={canRegenerateImage ? () => guardedStep("retry-image") : undefined}
+                regeneratingImage={loading && canRegenerateImage}
               />
             </>
           )}

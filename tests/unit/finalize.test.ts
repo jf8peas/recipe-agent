@@ -15,7 +15,14 @@ const testState = vi.hoisted(() => ({
   // T027 (US3) — every way the image call's own step can go wrong, each of
   // which must still leave `finalize` resolving normally with `dishImage:
   // null`, never a rejected promise.
-  imageBehavior: "success" as "success" | "throw" | "aborted" | "invalid-json" | "out-of-range",
+  imageBehavior: "success" as
+    | "success"
+    | "throw"
+    | "aborted"
+    | "invalid-json"
+    | "out-of-range"
+    | "markdown-fenced-json"
+    | "markdown-fenced-json-no-image",
   finalRecipe: {
     title: "Spinach Frittata",
     servings: 2,
@@ -74,6 +81,25 @@ vi.mock("../../lib/agent/models", async (importOriginal) => {
                   { type: "image", url: "data:image/png;base64,AAAA" },
                 ],
               };
+            }
+            if (testState.imageBehavior === "markdown-fenced-json") {
+              // Observed in production: google/gemini-2.5-flash-image wraps
+              // its accompanying JSON in a markdown code fence even though
+              // dishImagePrompt never asks for one.
+              return {
+                content: [
+                  { type: "text", text: "```json\n" + JSON.stringify({ focalX: 0.5, focalY: 0.5, zoom: 1.2 }) + "\n```" },
+                  { type: "image", url: "data:image/png;base64,AAAA" },
+                ],
+              };
+            }
+            if (testState.imageBehavior === "markdown-fenced-json-no-image") {
+              // Also observed in production: the model sometimes answers
+              // only the crop-JSON instruction and skips generating an
+              // image at all — `response.content` isn't even an array in
+              // that case (handleMultiModalOutput only wraps it when
+              // OpenRouter's own `message.images` is populated).
+              return { content: "```\n" + JSON.stringify({ focalX: 0.5, focalY: 0.5, zoom: 1.2 }) + "\n```" };
             }
             return {
               content: [
@@ -245,5 +271,25 @@ describe("finalize", () => {
       expect(result.dishImage).toBeNull();
       expect(result.outcome).toBe("finalized");
     });
+
+    it("a model that answers only the crop instruction, with no image at all, never rejects finalize", async () => {
+      testState.imageBehavior = "markdown-fenced-json-no-image";
+      const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+      expect(result.finalRecipe).toEqual(testState.finalRecipe);
+      expect(result.dishImage).toBeNull();
+      expect(result.outcome).toBe("finalized");
+    });
+  });
+
+  // Production regression: google/gemini-2.5-flash-image reliably wraps its
+  // accompanying crop JSON in a markdown code fence even though
+  // dishImagePrompt never asks for one — a plain `JSON.parse` on that text
+  // throws on the leading backtick.
+  it("succeeds when the crop JSON is wrapped in a markdown code fence", async () => {
+    testState.imageBehavior = "markdown-fenced-json";
+    const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+    expect(result.dishImage).not.toBeNull();
+    expect(result.dishImage).toMatchObject({ focalX: 0.5, focalY: 0.5, zoom: 1.2 });
+    expect(result.outcome).toBe("finalized");
   });
 });

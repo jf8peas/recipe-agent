@@ -56,6 +56,18 @@ function parseDataUrl(url: string): { mime: string; bytes: Buffer } | null {
   return { mime, bytes: Buffer.from(base64, "base64") };
 }
 
+/** Strips a markdown code fence (` ```json ... ``` ` or plain ` ``` ... ``` `)
+ * around the crop JSON, if present — observed in production:
+ * `google/gemini-2.5-flash-image` reliably wraps its accompanying JSON text
+ * in a fence even though `dishImagePrompt` never asks for one, the same
+ * habit many chat models default to whenever asked to "reply with JSON".
+ * Returns the input unchanged if it isn't fenced, so a model that already
+ * complies with plain JSON isn't affected. */
+function stripMarkdownCodeFence(text: string): string {
+  const match = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/.exec(text.trim());
+  return match ? match[1]! : text;
+}
+
 async function tryGenerateDishImage(
   finalRecipe: FinalRecipe,
   imageDeadlineMs: number,
@@ -120,7 +132,18 @@ async function tryGenerateDishImage(
       return null;
     }
 
-    const crop = DishImageCropSchema.parse(JSON.parse(textBlock.text));
+    let crop: z.infer<typeof DishImageCropSchema>;
+    try {
+      crop = DishImageCropSchema.parse(JSON.parse(stripMarkdownCodeFence(textBlock.text)));
+    } catch (cropErr) {
+      // Logged with the raw text (unlike the generic catch below) so a
+      // *new* format variation is diagnosable from the logs alone, the way
+      // the markdown-fence issue this replaced originally wasn't.
+      console.log(
+        `[finalize] image call: crop text failed to parse — raw text was: ${textBlock.text.slice(0, 300)}`,
+      );
+      throw cropErr;
+    }
     const parsed = parseDataUrl(imageBlock.url);
     if (!parsed) {
       console.log(`[finalize] image call: image block's url wasn't a parseable data URL`);

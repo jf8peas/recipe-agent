@@ -45,6 +45,10 @@ export interface RunTabsProps {
    * meaningful (viewing history, not yet finalized, or a photo already
    * exists), so its mere presence is `FinalRecipeView`'s visibility check. */
   onRegenerateImage?: () => void;
+  /** True while the `onRegenerateImage` request is in flight — see
+   * `FinalRecipeView`'s own doc comment for why this disables its button
+   * and shows a timer instead of omitting it. */
+  regeneratingImage?: boolean;
 }
 
 /**
@@ -64,6 +68,7 @@ export function RunTabs({
   historicalDraft,
   dishImageUrl,
   onRegenerateImage,
+  regeneratingImage,
 }: RunTabsProps) {
   const showEditLink = !editable && isEditableTab(activeTab, visible);
   // The Tabs strip already shows tabLabel()'s own wording ("Direction
@@ -157,6 +162,7 @@ export function RunTabs({
           dishImage={state.dishImage}
           dishImageUrl={dishImageUrl ?? null}
           onRegenerateImage={onRegenerateImage}
+          regeneratingImage={regeneratingImage}
         />
       )}
 

@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import type { Critique, DishImage as DishImageData, FinalRecipe } from "@/lib/agent/state";
 import { DishImage } from "@/components/ui/DishImage";
 import { Button } from "@/components/ui/Button";
+import { Spinner } from "@/components/ui/Spinner";
 
 export interface FinalRecipeViewProps {
   finalRecipe: FinalRecipe;
@@ -21,6 +23,28 @@ export interface FinalRecipeViewProps {
    * component additionally never shows the button while a photo already
    * exists, regardless of what the caller passes. */
   onRegenerateImage?: () => void;
+  /** True while a `retry-image` request triggered by this same button is in
+   * flight — disables the button (so a slow response can't be double-fired)
+   * and swaps its label for the same spinner + elapsed-seconds indicator
+   * `RunningStage.tsx` uses for the main Step/Play action, so a photo
+   * regenerate reads as "the server is working" instead of looking inert. */
+  regeneratingImage?: boolean;
+}
+
+/** Mirrors `RunningStage.tsx`'s own elapsed-time ticker — restarts from zero
+ * each time `active` turns true, holds at 0 while inactive. */
+function useElapsedSeconds(active: boolean): number {
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      setElapsedMs(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const interval = setInterval(() => setElapsedMs(Date.now() - startedAt), 200);
+    return () => clearInterval(interval);
+  }, [active]);
+  return elapsedMs;
 }
 
 /** Read-only final recipe view (spec FR-022, FR-016) — includes the approximate nutrition estimate. */
@@ -32,7 +56,9 @@ export function FinalRecipeView({
   dishImage,
   dishImageUrl,
   onRegenerateImage,
+  regeneratingImage = false,
 }: FinalRecipeViewProps) {
+  const elapsedMs = useElapsedSeconds(regeneratingImage);
   return (
     <>
       <DishImage
@@ -51,9 +77,22 @@ export function FinalRecipeView({
         <Button
           variant="secondary"
           onClick={onRegenerateImage}
-          style={{ marginBottom: "var(--space-4)" }}
+          disabled={regeneratingImage}
+          style={{
+            marginBottom: "var(--space-4)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--space-2)",
+          }}
         >
-          Generate photo
+          {regeneratingImage ? (
+            <>
+              <Spinner />
+              Generating photo… ({(elapsedMs / 1000).toFixed(1)}s)
+            </>
+          ) : (
+            "Generate photo"
+          )}
         </Button>
       )}
 

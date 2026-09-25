@@ -80,13 +80,19 @@ metadata) and served via a new signed-URL route
 (`GET /api/images/[imageId]`, `lib/image-url.ts`); the final recipe tab and
 the session list (`components/ui/DishImage.tsx`, shared by both) show the
 photo or a neutral placeholder; an image failure never becomes a stage
-failure. Also added, discovered as a genuine prerequisite gap during
-implementation and confirmed with the user before building it: Retry now
-works on an already-*finalized* `finalize` too (previously Retry only ever
-reached a stage that had just failed) — `ActionToolbar`'s "Regenerate"
-button, `useSession`'s `retryFromCheckpointId` extended, and the `/step`
-route's `already-advanced` guard now has a narrow, finalize-only bypass for
-`mode: "retry"`. Also fixed along the way: a real Postgres `UPDATE ... FROM`
+failure. **Redesigned post-deploy** (research.md R6, based on real usage):
+the final tab's photo now has its own "Generate photo" button that appears
+only when the image is blank (never when a photo already exists), and
+clicking it regenerates *just* the image — the existing `finalRecipe` is
+reused as-is via `config.configurable.reuseFinalRecipe`, a plain
+`graph.invoke(null, config)` on the `finalize` checkpoint (`mode:
+"retry-image"` in `app/api/recipe/[sid]/step/route.ts`), never a second LLM
+call for text. This replaced an earlier, broader design — a general
+"Regenerate" button on `ActionToolbar` that re-ran the whole finalize stage
+(text + image together) — which real usage on a slow `MODEL_DEFAULT` showed
+starving the image call of whatever time budget the text call didn't
+consume, often leaving no photo at all; that button and its `onRetryFinalize`
+prop have been removed entirely, not just hidden. Also fixed along the way: a real Postgres `UPDATE ... FROM`
 restriction in `updateSessionThumbnail` (a `LEFT JOIN ON` clause can't
 reference the update target) caught by a contract test, not by planning; and
 `playwright.config.ts`, which had never actually been wired to the local
@@ -117,7 +123,45 @@ call) now computes its model call's timeout/abort-signal from this shared
 helper instead of relying on unbounded per-attempt retries. Every node also
 now logs a `console.error` on model-call failure — this class of bug is
 genuinely undiagnosable without a timestamped trace (the finding process
-here needed several rounds of added logging to actually pinpoint). Not yet
-re-verified against a live deploy as of this writing — the fix is `tsc`/
-`vitest`/`playwright`-green locally but its actual effect on the production
-timeout has not yet been confirmed by the user re-testing.
+here needed several rounds of added logging to actually pinpoint). Confirmed
+fixed against a live deploy: a subsequent production log showed `finalize`
+completing in ~32s total, well inside the 60s ceiling.
+
+**Further production findings, same post-deploy testing pass**:
+- `openai/gpt-image-2` (the originally-configured `MODEL_IMAGE`) 404s on
+  OpenRouter's chat/completions endpoint — that family of models requires
+  the separate dedicated `/api/v1/images` endpoint, which has no text
+  channel and so can't return the crop JSON in the same call (FR-008).
+  `MODEL_IMAGE` was switched to `google/gemini-2.5-flash-image` instead
+  (env-var-only change, no code change) — see research.md R1/R6.
+- `google/gemini-2.5-flash-image` reliably wraps its crop-JSON text in a
+  markdown code fence even though `dishImagePrompt` never asks for one — a
+  generic LLM habit, not a bug in the model or prompt. Fixed with a
+  `stripMarkdownCodeFence()` helper in `finalize.ts` applied before
+  `JSON.parse`; see research.md R7.
+- Old checkpoints (predating this feature's `ingredients`/`toBuy` fields on
+  `FinalRecipe`/`recipeDraft`) crashed the whole page with `Cannot read
+  properties of undefined (reading 'length')` in `FinalRecipeView.tsx` and
+  `RecipeDraftEditor.tsx` — neither file guarded against a field simply
+  being `undefined` on an old checkpoint (Zod schemas are never re-parsed
+  against already-checkpointed state, so old JSON just lacks newer keys).
+  Fixed with `?.length ?? 0` / `?? []` guards at every render site, not just
+  the one that happened to be touched when the field was introduced.
+- `pg-connection-string` warned that `sslmode=require` is only a deprecated
+  alias for `sslmode=verify-full`. Docs (`.env.example`,
+  `specs/001-recipe-agent/quickstart.md`) now recommend `verify-full`
+  explicitly, which surfaced a real latent bug: `lib/db/pool.ts` enforced
+  `rejectUnauthorized: true` via a literal `"sslmode=require"` substring
+  check, which would have silently stopped matching the moment a deployment
+  switched values. Fixed to match any `sslmode=` value
+  (`/[?&]sslmode=/`).
+- The "Generate photo" button had no busy state: clicking it left it fully
+  clickable (and looking inert) for the whole `retry-image` round trip, with
+  nothing indicating the server was working. Fixed by threading a new
+  `regeneratingImage` boolean down `app/page.tsx` → `RunTabs` →
+  `FinalRecipeView` (`loading && canRegenerateImage`, both already tracked
+  in `app/page.tsx`) — the button disables itself and swaps its label for
+  `RunningStage.tsx`'s own spinner + elapsed-seconds treatment
+  (`FinalRecipeView.tsx`'s local `useElapsedSeconds` hook mirrors
+  `RunningStage`'s ticker exactly) for the duration of the request, then
+  reverts once it resolves.
