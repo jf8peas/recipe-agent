@@ -180,9 +180,21 @@ completing in ~32s total, well inside the 60s ceiling.
   clickable for the whole server round trip, with no feedback that anything
   was happening — the same class of gap as "Generate photo"'s, on the
   slower `/api/recipe/[sid]/delete` route this time. Fixed the same way: a
-  `deletingSessionId` state in `app/page.tsx` (set for the clicked
-  `sessionId` around `deleteSessionById`, cleared in a `finally`) threaded
-  through `SessionList` → `ListRow` as a per-row `deleting` boolean — that
-  row's Open and Delete buttons both disable and the Delete button swaps its
-  label for a spinner + "Deleting…" (no elapsed-seconds timer this time,
-  since the request settles quickly enough that one wasn't asked for).
+  busy state in `app/page.tsx` threaded through `SessionList` → `ListRow` as
+  a per-row `deleting` boolean — that row's Open and Delete buttons both
+  disable and the Delete button swaps its label for a spinner + "Deleting…"
+  (no elapsed-seconds timer this time, since the request settles quickly
+  enough that one wasn't asked for). **Caught immediately after by testing
+  two deletes at once**: the first version tracked this as a single
+  `deletingSessionId: string | null`, which broke under concurrent
+  deletes — clicking a second row's Delete overwrote the first row's id, so
+  the first row's busy state vanished (re-enabling its buttons while its
+  own delete was still in flight) and whichever request's `finally` ran
+  first cleared the state for BOTH rows, not just its own. The delete route
+  itself was already safe under this (idempotent, scoped per `sid`, see its
+  own doc comment) — this was purely a UI-tracking bug. Fixed by making it
+  a `Set<string>` (`deletingSessionIds`) instead of a single id, with an
+  early-return guard in `handleDeleteSession` against re-firing a delete
+  for an id already in the set. Covered by a new e2e test that deletes two
+  different rows within the same in-flight window and asserts both show a
+  busy state simultaneously.

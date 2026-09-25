@@ -91,7 +91,14 @@ export default function HomePage() {
     sessionList.entries.length > 0 ? "list" : "entry",
   );
   const [deletedNotice, setDeletedNotice] = useState(false);
-  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  // A `Set`, not a single id — deleting two different sessions at once (two
+  // quick clicks on different rows) is a real path: each request is
+  // independent server-side (the delete route is per-`sid` and idempotent),
+  // but a single `string | null` here would let the second click's id
+  // silently overwrite the first's, so whichever request finished first
+  // cleared the busy state for BOTH rows and the still-in-flight one's
+  // buttons re-enabled while its delete was still pending.
+  const [deletingSessionIds, setDeletingSessionIds] = useState<Set<string>>(() => new Set());
   // Owned here (not self-managed by `AppHeader`) so the entry form's intro
   // can open About straight to its agent-graph section, not just the header.
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -358,7 +365,13 @@ export default function HomePage() {
   }
 
   async function handleDeleteSession(sessionId: string) {
-    setDeletingSessionId(sessionId);
+    // Guards the same race the disabled button closes for mouse clicks
+    // (there's a brief window between click and re-render where a second
+    // event for the same row could still fire) — belt and suspenders, since
+    // the server route is idempotent anyway but firing a redundant request
+    // is still worth skipping.
+    if (deletingSessionIds.has(sessionId)) return;
+    setDeletingSessionIds((prev) => new Set(prev).add(sessionId));
     try {
       const ok = await deleteSessionById(sessionId);
       if (ok) {
@@ -366,7 +379,11 @@ export default function HomePage() {
         advanceLock.broadcastSessionDeleted(sessionId);
       }
     } finally {
-      setDeletingSessionId(null);
+      setDeletingSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
     }
   }
 
@@ -415,7 +432,7 @@ export default function HomePage() {
                 onOpen={handleOpenSession}
                 onDelete={handleDeleteSession}
                 onNewSession={handleStartNewSession}
-                deletingSessionId={deletingSessionId}
+                deletingSessionIds={deletingSessionIds}
               />
             </>
           ) : (
