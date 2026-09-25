@@ -1,6 +1,32 @@
 import { test, expect } from "@playwright/test";
 import { startSession, clickStep, expectNoA11yViolations } from "./helpers";
 
+test("US1 happy path: clicking Start shows the same running-stage spinner and elapsed-time indicator as Step, while parseIngredients is in flight", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Ingredients (one per line)").fill("2 eggs\nspinach");
+
+  // Artificially slow /api/recipe/start (same pattern used for "Generate
+  // photo"/delete's own busy-state tests) so the in-flight state is actually
+  // observable instead of racing past it.
+  await page.route("**/api/recipe/start", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.continue();
+  });
+
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+
+  const running = page.locator('[role="status"]', { hasText: "Running" });
+  await expect(running).toBeVisible();
+  await expect(running).toContainText("parseIngredients");
+  await expect(running).toContainText(/\(\d+\.\ds\)/);
+
+  // Resolves into the normal running-session view once the response lands.
+  await expect(page.getByRole("button", { name: /^Step \(/ })).toBeVisible();
+  await expect(running).toHaveCount(0);
+});
+
 test("US1 happy path: start -> step through all stages -> finalized recipe", async ({ page }) => {
   await startSession(page, ["2 eggs", "spinach"]);
   await expect(page.getByRole("button", { name: /^Step \(/ })).toBeVisible();

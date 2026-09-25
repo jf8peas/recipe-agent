@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/Button";
 
 interface RunningStageProps {
   stageName: string;
-  onCancel: () => void;
+  /** Omitted for a request with no cancellation wired up yet (the entry
+   * screen's own "Start" call, which runs `parseIngredients` before a
+   * session/branch even exists to abort) — the Cancel button itself is
+   * omitted too, rather than rendered inert. */
+  onCancel?: () => void;
   /** Present only during Auto-run: stop after this stage finishes, without aborting it. */
   onPause?: () => void;
 }
@@ -48,9 +52,11 @@ export function RunningStage({ stageName, onCancel, onPause }: RunningStageProps
             Pause
           </Button>
         )}
-        <Button variant="secondary" onClick={onCancel}>
-          Cancel
-        </Button>
+        {onCancel && (
+          <Button variant="secondary" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -240,3 +240,30 @@ completing in ~32s total, well inside the 60s ceiling.
   "Could not start a session right now" message with zero trace of which
   one actually happened; `parseIngredients.ts` already logged its own
   side, this ties it to the request.
+- Diagnosed a real `[parseIngredients] failed after 47816ms: TimeoutError`
+  in production against `MODEL_DEFAULT=deepseek/deepseek-v4-flash`. Root
+  cause identified by comparing OpenRouter's own per-model endpoint list
+  (`GET /api/v1/models/{id}/endpoints`): DeepSeek's model is served through
+  **16 different third-party inference hosts** on OpenRouter (Relace,
+  Baidu, DeepInfra, Novita, SiliconFlow, Venice, etc.) of wildly varying
+  latency, with OpenRouter's default routing free to land on any of them —
+  vs. `openai/gpt-6-luna` or `google/gemini-2.5-flash-lite`, each served
+  through a small number of first-party/enterprise endpoints only (OpenAI/
+  Azure/Bedrock, or Google-only, respectively) and each *cheaper* per-token
+  than the `openai/gpt-4.1-mini` fallback already coded into
+  `lib/agent/models.ts`. Not a code fix — `MODEL_DEFAULT` is operator-set in
+  Vercel's own env vars, outside this repo.
+- The entry screen ("What's in your kitchen?") gave zero feedback while
+  `/api/recipe/start` was in flight beyond a disabled Start button — no
+  spinner, no elapsed time, unlike every stage advance elsewhere in the app.
+  Fixed by reusing `RunningStage.tsx` (the exact same component the
+  running-session sticky action row already shows during a Step/Play call):
+  `useSession.ts`'s `start()` now sets the existing `runningStage` state to
+  `"parseIngredients"` before calling `/start` (accurate unconditionally —
+  it's always the graph's first node) and clears it in a `finally`;
+  `app/page.tsx`'s entry view renders `<RunningStage>` underneath the form
+  whenever it's set. `RunningStage`'s `onCancel` prop is now optional (like
+  `onPause` already was) — `start()` has no cancellation wired up yet (no
+  session/branch exists yet to abort against), so the Cancel button is
+  omitted rather than rendered inert, matching how `onPause` was already
+  handled.

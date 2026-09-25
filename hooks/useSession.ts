@@ -307,20 +307,30 @@ export function useSession() {
 
   const start = useCallback(
     async (ingredients: string[], constraints?: Partial<Constraints>) => {
-      const res = await callApi<StartResponse>("/api/recipe/start", {
-        method: "POST",
-        body: JSON.stringify({ ingredients, constraints }),
-      });
-      if (!res) return;
-      window.localStorage.setItem(SESSION_ID_KEY, res.sessionId);
-      // `/start` never reaches `finalize` in the same call, so there's never
-      // a `dishImage` yet — always `null` here, unlike every other response
-      // this hook stores.
-      setSnapshot({ ...res, dishImageUrl: null, kind: undefined });
-      setHistory({ branches: [{ threadId: res.branchId, parentThreadId: null, forkedFromCheckpointId: null }], timeline: res.timeline });
-      setViewed(null);
-      setPendingSave(null);
-      setRetryFromCheckpointId(null);
+      // `/start` always runs `parseIngredients` for real (the graph's first
+      // node) before it can even return — reusing the same `runningStage`
+      // state `step()` sets lets the entry screen show the identical
+      // spinner + elapsed-time indicator (`RunningStage.tsx`) instead of
+      // just a disabled button while that real model call is in flight.
+      setRunningStage("parseIngredients");
+      try {
+        const res = await callApi<StartResponse>("/api/recipe/start", {
+          method: "POST",
+          body: JSON.stringify({ ingredients, constraints }),
+        });
+        if (!res) return;
+        window.localStorage.setItem(SESSION_ID_KEY, res.sessionId);
+        // `/start` never reaches `finalize` in the same call, so there's never
+        // a `dishImage` yet — always `null` here, unlike every other response
+        // this hook stores.
+        setSnapshot({ ...res, dishImageUrl: null, kind: undefined });
+        setHistory({ branches: [{ threadId: res.branchId, parentThreadId: null, forkedFromCheckpointId: null }], timeline: res.timeline });
+        setViewed(null);
+        setPendingSave(null);
+        setRetryFromCheckpointId(null);
+      } finally {
+        setRunningStage(null);
+      }
     },
     [callApi],
   );

@@ -473,6 +473,11 @@ export default function HomePage() {
               </section>
               <h1 style={{ fontSize: "var(--text-xl)", marginTop: 0 }}>What&apos;s in your kitchen?</h1>
               <EntryForm onSubmit={(ingredients) => start(ingredients)} disabled={loading} />
+              {runningStage && (
+                <div style={{ marginTop: "var(--space-3)" }}>
+                  <RunningStage stageName={runningStage} />
+                </div>
+              )}
               {sessionList.entries.length > 0 && (
                 <button
                   type="button"
