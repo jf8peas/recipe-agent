@@ -160,6 +160,85 @@ write); a separate `failures` table (splits history across two stores).
 
 ---
 
+## R4 addendum — Production data loss found in the wild (2026-09-25)
+
+**What happened**: a real session's already-finalized recipe (feature 007's
+"Generate photo" flow) went blank — the live tip's `finalRecipe` had reverted
+to `null` even though `outcome` still read `"finalized"`, with a stale
+`failureReason` left over from an unrelated earlier timeout. Diagnosed by
+querying the production Neon database directly (read-only) and reconstructing
+the checkpoint tree: `finalize` had succeeded **four separate times** from the
+same pre-finalize checkpoint (the initial run plus repeated "Generate photo"
+retries, each a `graph.invoke()`-created sibling — safe, per R3), then a
+**later attempt failed** and this route's stage-failure `graph.updateState`
+call (above) targeted that same pre-finalize checkpoint — which by then
+already had those four successful children. This is exactly R3's confirmed
+bug ("`updateState` on a checkpoint that already has a child... silently
+drops the edit; the resulting checkpoint reflects the *existing* sibling's
+content instead"), just not recognized as reachable from this code path
+before now.
+
+**Why R4's original "still-childless slot — safe" comment was wrong**: it
+held for the *original* step/retry flow, where the `alreadyAdvanced` guard
+normally blocks a second real advance from the same checkpoint before a
+failure could ever land on an already-childed one — **except** two cases
+`alreadyAdvanced` was never designed to cover:
+1. Two failures in a row from the same checkpoint (no success in between) —
+   `alreadyAdvanced` only counts non-failure children, so a checkpoint whose
+   *only* child so far is itself a stage-failure still lets a plain "retry"
+   through; if that retry *also* fails, this same `updateState` call now
+   targets an already-childed checkpoint.
+2. Feature 007's `retryingImageOnly` bypass (`app/api/recipe/[sid]/step/
+   route.ts`), added long after this decision was written — it deliberately
+   allows *repeated successful* children of one checkpoint (multiple
+   "Generate photo" clicks), which is exactly the scenario above.
+
+**Scope**: a full scan of every checkpoint in production (every parent with
+≥2 children, checking whether any `updateState`-sourced child wasn't the
+first) found exactly **one** affected session — not systemic, but a real,
+reachable gap, not a one-off fluke either.
+
+**Fix**: `siblingHistory` (already read earlier in the route, for the
+`alreadyAdvanced` check) is reused to detect *any* existing child of
+`fromCheckpointId` — regardless of that child's outcome — before the
+stage-failure `updateState` call. If one exists, the route writes **nothing**
+and returns a plain `500 retry-failed-unsafe-to-record` error instead; the
+branch's real state (whatever its last real child already left it as) is
+left untouched, and retrying is still safe (`invoke`, not `updateState`,
+confirmed safe regardless of sibling count per R3). Recorded, not silently
+swallowed — same principle as this route's existing "signal aborted" /
+"provider cap" branches, which already write nothing on failure.
+
+**A subtlety found while testing the fix**: `graph.invoke(null, {
+checkpoint_id })` itself — independent of this route's own `updateState`
+call — unconditionally writes an inert bookkeeping checkpoint (LangGraph's
+own "fork"-tagged resume marker) the moment it resumes from a checkpoint
+that isn't the thread's current tip, *before* the target node even runs.
+This means a **second** failed retry still moves the branch's live tip away
+from the first failure's checkpoint even with this fix applied — but since
+that bookkeeping checkpoint is `invoke`-created (not `updateState`), it's
+confirmed-safe per R3 and internally consistent (`outcome: "in-progress"`,
+no stray `failureReason`), just an extra harmless entry in the checkpoint
+history. The regression test (`tests/contract/step.test.ts`, "a second
+consecutive failure...") asserts against the actual failure mode (no
+contradictory field combination, like a `"finalized"` outcome with a null
+`finalRecipe`) rather than an exact checkpoint match, precisely because of
+this.
+
+**Recovery for the one affected session**: the underlying `finalRecipe`
+content was never lost — `checkpoint_blobs` still held it at its correct,
+already-written version. The corrupted checkpoint's `channel_versions`
+pointer for `finalRecipe` (and `dishImage`) had reverted to the pre-finalize
+checkpoint's own stale version instead of the version the successful
+sibling had already advanced to. Fixed with a single, targeted `UPDATE` on
+that one `checkpoints` row's `channel_versions` (repointing `finalRecipe`/
+`dishImage` to the correct, already-existing version and `failureReason`
+back to its null-default version) — no blob bytes touched, nothing deleted.
+Verified via `getGraph().getState()` (the same call the app itself makes)
+and a full `StateSchema.safeParse` afterward.
+
+---
+
 ## R5 — OpenRouter via `@langchain/openai`
 
 **Decision**: All node model calls use `ChatOpenAI` from `@langchain/openai`

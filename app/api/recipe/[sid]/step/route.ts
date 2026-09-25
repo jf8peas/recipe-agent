@@ -182,6 +182,34 @@ export async function POST(
     const failedStage = fromSnapshot.next[0];
     if (!failedStage) throw err; // fromCheckpointId was terminal — shouldn't happen
 
+    // `updateState` on a checkpoint that ALREADY has a child (success or a
+    // prior failure — `siblingHistory` counts either) hits the confirmed
+    // data-loss bug (specs/001-recipe-agent/research.md R3, T016 spike):
+    // it silently drops the write and/or leaks an existing sibling's
+    // content into channels it never touched. This was previously assumed
+    // unreachable ("fromCheckpointId's still-childless slot") because the
+    // `alreadyAdvanced` guard above normally blocks a second real advance
+    // from the same checkpoint — but `retryingImageOnly` deliberately
+    // bypasses that guard so repeated "Generate photo" attempts can share
+    // one parent, and a LATER attempt failing after an earlier one already
+    // succeeded lands exactly here. Confirmed in production: a real
+    // session's already-finalized recipe was wiped this way (its live tip
+    // ended up pointing back at the pre-finalize, still-null `finalRecipe`)
+    // — see research.md's dish-image-generation addendum. Rather than risk
+    // that again, a failure onto an already-childed checkpoint writes
+    // nothing at all and reports the failure as a plain error instead; the
+    // branch's real state (whatever its last successful child left it as)
+    // is untouched, and retrying is still safe (a plain `invoke`, confirmed
+    // safe regardless of sibling count).
+    const alreadyHasAnyChild = siblingHistory.some((entry) => entry.parentCheckpointId === fromCheckpointId);
+    if (alreadyHasAnyChild) {
+      return jsonError(
+        500,
+        "retry-failed-unsafe-to-record",
+        "That attempt failed. Nothing was changed — you can try again.",
+      );
+    }
+
     // Stage-failure checkpoint (research R4): attributed to the stage that
     // was attempted, targeting fromCheckpointId's still-childless slot — safe.
     await graph.updateState(

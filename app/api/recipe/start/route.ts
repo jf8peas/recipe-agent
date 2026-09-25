@@ -21,6 +21,13 @@ const RequestSchema = z.object({
 });
 
 export async function POST(request: Request): Promise<NextResponse> {
+  // Captured before any of this route's own DB work (rate-limit checks,
+  // insertSession/insertBranch), same as app/api/recipe/[sid]/step/route.ts —
+  // parseIngredients's own requestDeadline() measures its budget from this
+  // point, not from when the node itself starts running, so that overhead
+  // actually counts against the 60s ceiling instead of leaving the node
+  // thinking it has more time than the function actually has left.
+  const requestStartedAt = Date.now();
   const clientId = getClientId(request);
   if (!clientId) return jsonError(401, "missing-client-id", "X-Client-Id header is required.");
 
@@ -80,7 +87,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   await insertBranch({ threadId, sessionId }, pool);
 
   const graph = getGraph();
-  const config = { configurable: { thread_id: threadId } };
+  const config = { configurable: { thread_id: threadId, requestStartedAt } };
   const seed = {
     ...INITIAL_STATE,
     ingredients: ingredients.map(toRawIngredient),
@@ -98,6 +105,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       // Spec FR-064/FR-066: treated like the global cap.
       return NextResponse.json(providerCapEnvelope(), { status: 429 });
     }
+    // parseIngredients already logs its own failure with elapsed time
+    // (lib/agent/nodes/parseIngredients.ts) — this is the route-level trace
+    // tying that back to a request that otherwise only ever surfaced the
+    // generic "start-failed" message below to the user.
+    console.error(
+      `[start] graph.invoke failed after ${Date.now() - requestStartedAt}ms:`,
+      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    );
     return jsonError(
       500,
       "start-failed",

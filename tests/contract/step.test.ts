@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { startTestDb, type TestDb } from "../helpers/test-db";
 import { getPool } from "../../lib/db/pool";
-import { DishImageSchema } from "../../lib/agent/state";
+import { DishImageSchema, type State } from "../../lib/agent/state";
 
 type Responder = () => unknown;
 const responders = new Map<string, Responder[]>();
@@ -270,6 +270,64 @@ describe("POST /api/recipe/:sid/step", () => {
     const retryJson = await retryRes.json();
     expect(retryJson.kind).toBe("normal");
     expect(retryJson.checkpointId).not.toBe(failJson.checkpointId);
+  });
+
+  // Regression: a checkpoint that already has ANY child (a prior stage
+  // failure counts, not just a success) is unsafe to `updateState` again —
+  // specs/001-recipe-agent/research.md R3/T016 confirms `updateState` onto
+  // an already-branched-from checkpoint silently drops the write or leaks a
+  // sibling's content into untouched channels. Two failures in a row from
+  // the same checkpoint hits this: the first failure's `updateState` is
+  // safe (still childless), but the second one's checkpoint now already has
+  // that first failure as a child. A real production session was corrupted
+  // by the equivalent case on the "retry-image" path (research.md's
+  // dish-image-generation addendum) — this test covers the simpler,
+  // directly-reproducible version of the same mechanism.
+  it("a second consecutive failure from the same checkpoint reports an error instead of writing a second, unsafe stage-failure checkpoint", async () => {
+    const { sid, branchId, checkpointId } = await createSession("client-double-failure");
+    queueResponse("proposeDirections", () => {
+      throw new Error("simulated model failure 1");
+    });
+
+    const firstFail = await stepReq(
+      sid,
+      { branchId, fromCheckpointId: checkpointId },
+      "client-double-failure",
+    );
+    expect(firstFail.status).toBe(200);
+    const firstFailJson = await firstFail.json();
+    expect(firstFailJson.kind).toBe("stage-failure");
+
+    queueResponse("proposeDirections", () => {
+      throw new Error("simulated model failure 2");
+    });
+    const secondFail = await stepReq(
+      sid,
+      { branchId, fromCheckpointId: checkpointId, mode: "retry" },
+      "client-double-failure",
+    );
+    expect(secondFail.status).toBe(500);
+    const secondFailJson = await secondFail.json();
+    expect(secondFailJson.error).toBe("retry-failed-unsafe-to-record");
+
+    // Nothing was corrupted. Note: LangGraph's own `invoke()` unconditionally
+    // writes a bookkeeping checkpoint the moment it resumes from a
+    // non-tip `checkpoint_id` (a "fork"-tagged entry, confirmed safe per
+    // research R3 — it's created via `invoke`, never `updateState`) BEFORE
+    // the node itself runs and throws — so the live tip legitimately moves
+    // again even though this second failure was never recorded. What must
+    // NOT happen is the specific corruption a real production session hit
+    // (research.md's dish-image-generation addendum): a checkpoint whose
+    // fields contradict each other, e.g. `outcome: "finalized"` with a null
+    // `finalRecipe`, or a `failureReason` attached to an outcome other than
+    // "stage-failure". The second failure's own text ("simulated model
+    // failure 2") must never surface anywhere, since it was never persisted.
+    const { getGraph } = await import("../../lib/agent/runtime");
+    const liveSnapshot = await getGraph().getState({ configurable: { thread_id: branchId } });
+    const liveValues = liveSnapshot.values as State;
+    expect(liveValues.failureReason ?? "").not.toContain("simulated model failure 2");
+    if (liveValues.outcome === "finalized") expect(liveValues.finalRecipe).not.toBeNull();
+    if (liveValues.failureReason !== null) expect(liveValues.outcome).toBe("stage-failure");
   });
 
   it("409s on a second advance attempt from an already-advanced checkpoint", async () => {

@@ -198,3 +198,45 @@ completing in ~32s total, well inside the 60s ceiling.
   for an id already in the set. Covered by a new e2e test that deletes two
   different rows within the same in-flight window and asserts both show a
   busy state simultaneously.
+- **Production data-loss bug found and fixed (2026-09-25)**: a real user
+  reported a finalized session ("Chocolate Jarlsberg Cheese Bites") showing
+  no recipe. Diagnosed by querying the production Neon database directly —
+  `finalRecipe` on the branch's live tip had reverted to `null` (with
+  `outcome` still misleadingly reading `"finalized"` and a stale
+  `failureReason` left over) even though the correct recipe was still fully
+  intact in `checkpoint_blobs`. Root cause: `app/api/recipe/[sid]/step/
+  route.ts`'s stage-failure `graph.updateState(...)` call assumed its
+  target checkpoint was still childless (true for the *original* step/retry
+  design, per specs/001-recipe-agent/research.md R4) — but feature 007's
+  `retryingImageOnly` bypass deliberately allows *repeated successful*
+  children of the same checkpoint (multiple "Generate photo" clicks), so a
+  *later* attempt failing hits the confirmed `@langchain/langgraph-
+  checkpoint-postgres` data-loss bug (R3, T016 spike) the constitution
+  already warns about — `updateState` on an already-branched checkpoint
+  silently drops the write. A full production-wide scan found this was the
+  only affected session (not systemic). Fixed the code: the failure path
+  now checks (via the already-computed `siblingHistory`) whether the target
+  checkpoint already has any child before writing, and if so writes
+  **nothing** and returns a plain `500` instead — same principle as the
+  route's existing "signal aborted"/"provider cap" branches. See
+  research.md's new R4 addendum for the full mechanism, including a
+  LangGraph-internal subtlety found while testing the fix (a failed retry's
+  own `invoke()` unconditionally writes a harmless "fork" bookkeeping
+  checkpoint before the node runs). The one affected session's data was
+  recovered with a single targeted `UPDATE` repointing the corrupted
+  checkpoint's version pointer back to its already-existing, never-lost
+  `finalRecipe`/`dishImage` blobs — no bytes deleted or overwritten,
+  verified via `getGraph().getState()` and `StateSchema.safeParse`.
+- `app/api/recipe/start/route.ts` never threaded a `requestStartedAt`
+  through `config.configurable` the way `step/route.ts` was fixed to
+  earlier — so `parseIngredients`'s own `requestDeadline()` call measured
+  its budget from inside the node, not from the true start of the request,
+  letting this route's own rate-limit checks and `insertSession`/
+  `insertBranch` writes go uncounted against the 60s ceiling. Fixed to
+  match `step/route.ts`'s pattern. Also added a `console.error` in the
+  route's catch block (`[start] graph.invoke failed after Xms: ...`) —
+  previously any failure here (model timeout, rate limit, malformed
+  output, a checkpoint-write hiccup) collapsed into the same generic
+  "Could not start a session right now" message with zero trace of which
+  one actually happened; `parseIngredients.ts` already logged its own
+  side, this ties it to the request.
