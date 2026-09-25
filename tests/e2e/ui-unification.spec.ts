@@ -55,6 +55,16 @@ test.describe("US1: one shared header, two states", () => {
     await page.getByRole("button", { name: "About This App" }).click();
     await expectNoA11yViolations(page);
   });
+
+  test("clicking the mark/title returns to the session list from a running session", async ({ page }) => {
+    await startSession(page, ["2 eggs", "spinach"]);
+    await expect(page.getByRole("button", { name: /^Step \(/ })).toBeVisible();
+
+    await page.getByRole("button", { name: "Recipe Agent home" }).click();
+
+    await expect(page.getByRole("heading", { name: "Your sessions" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Step \(/ })).toHaveCount(0);
+  });
 });
 
 test.describe("US2: the two-row agent graph", () => {

@@ -165,3 +165,24 @@ completing in ~32s total, well inside the 60s ceiling.
   (`FinalRecipeView.tsx`'s local `useElapsedSeconds` hook mirrors
   `RunningStage`'s ticker exactly) for the duration of the request, then
   reverts once it resolves.
+- The header's "RA" mark + "Recipe Agent" title (`AppHeader.tsx`, `mode:
+  "app"` only) didn't go anywhere. Added an `onLogoClick` prop, wired at
+  both `app/page.tsx` call sites to the existing `handleExitToSessions`
+  (the same handler `ActionToolbar`'s "Back to your sessions" already
+  uses) — clicking it now returns to the session list from anywhere (a
+  running session, mid-edit, the entry form). `aria-label="Recipe Agent
+  home"` deliberately avoids the substring "your sessions" so Playwright's
+  `getByRole` name matching doesn't collide with the existing "Back to your
+  sessions" button elsewhere on screen (a real, caught-by-the-e2e-suite
+  ambiguous-locator failure during this change). The "about" mode's own
+  header instance is unchanged — it already has "Return to App".
+- Deleting a session (`SessionList`/`ListRow`) left its delete button fully
+  clickable for the whole server round trip, with no feedback that anything
+  was happening — the same class of gap as "Generate photo"'s, on the
+  slower `/api/recipe/[sid]/delete` route this time. Fixed the same way: a
+  `deletingSessionId` state in `app/page.tsx` (set for the clicked
+  `sessionId` around `deleteSessionById`, cleared in a `finally`) threaded
+  through `SessionList` → `ListRow` as a per-row `deleting` boolean — that
+  row's Open and Delete buttons both disable and the Delete button swaps its
+  label for a spinner + "Deleting…" (no elapsed-seconds timer this time,
+  since the request settles quickly enough that one wasn't asked for).

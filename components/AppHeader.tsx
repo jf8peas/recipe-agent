@@ -20,6 +20,11 @@ export interface AppHeaderProps {
   /** When provided, the caller owns the About page (and renders it itself);
    * `sectionId` is the section to land on, or null for the top. */
   onOpenAbout?: (sectionId: string | null) => void;
+  /** Makes the mark + "Recipe Agent" title in the top left act as a home
+   * link, taking the user back to the session list from wherever they are
+   * (a running session, mid-edit, the entry form). Omitted in "about" mode's
+   * own instance, which already has its own "Return to App" button. */
+  onLogoClick?: () => void;
   // "about" mode:
   onReturn?: () => void;
 }
@@ -126,6 +131,7 @@ export function AppHeader({
   pauseBetweenStages: pauseProp,
   onTogglePause,
   onOpenAbout,
+  onLogoClick,
   onReturn,
 }: AppHeaderProps) {
   const [selfPause, setSelfPause] = usePauseBetweenStages();
@@ -200,12 +206,26 @@ export function AppHeader({
   return (
     <>
       <header style={headerStyle}>
-        <div style={titleGroupStyle}>
-          <span aria-hidden="true" style={markStyle}>
-            RA
-          </span>
-          <strong style={{ fontSize: "var(--text-lg)" }}>Recipe Agent</strong>
-        </div>
+        {onLogoClick ? (
+          <button
+            type="button"
+            onClick={onLogoClick}
+            aria-label="Recipe Agent home"
+            style={{ ...titleGroupStyle, font: "inherit", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+          >
+            <span aria-hidden="true" style={markStyle}>
+              RA
+            </span>
+            <strong style={{ fontSize: "var(--text-lg)" }}>Recipe Agent</strong>
+          </button>
+        ) : (
+          <div style={titleGroupStyle}>
+            <span aria-hidden="true" style={markStyle}>
+              RA
+            </span>
+            <strong style={{ fontSize: "var(--text-lg)" }}>Recipe Agent</strong>
+          </div>
+        )}
 
         <div style={rightGroupStyle}>
           <Toggle

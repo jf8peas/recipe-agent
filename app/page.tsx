@@ -91,6 +91,7 @@ export default function HomePage() {
     sessionList.entries.length > 0 ? "list" : "entry",
   );
   const [deletedNotice, setDeletedNotice] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   // Owned here (not self-managed by `AppHeader`) so the entry form's intro
   // can open About straight to its agent-graph section, not just the header.
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -291,7 +292,12 @@ export default function HomePage() {
   if (!clientId || restoring) {
     return (
       <>
-        <AppHeader pauseBetweenStages={pauseBetweenStages} onTogglePause={setPauseBetweenStages} onOpenAbout={openAbout} />
+        <AppHeader
+          pauseBetweenStages={pauseBetweenStages}
+          onTogglePause={setPauseBetweenStages}
+          onOpenAbout={openAbout}
+          onLogoClick={handleExitToSessions}
+        />
         {aboutPage}
         <main style={{ padding: "var(--space-6)" }}>
           <p style={{ color: "var(--color-text-muted)" }}>Loading…</p>
@@ -352,10 +358,15 @@ export default function HomePage() {
   }
 
   async function handleDeleteSession(sessionId: string) {
-    const ok = await deleteSessionById(sessionId);
-    if (ok) {
-      sessionList.remove(sessionId);
-      advanceLock.broadcastSessionDeleted(sessionId);
+    setDeletingSessionId(sessionId);
+    try {
+      const ok = await deleteSessionById(sessionId);
+      if (ok) {
+        sessionList.remove(sessionId);
+        advanceLock.broadcastSessionDeleted(sessionId);
+      }
+    } finally {
+      setDeletingSessionId(null);
     }
   }
 
@@ -381,7 +392,12 @@ export default function HomePage() {
 
   return (
     <>
-      <AppHeader pauseBetweenStages={pauseBetweenStages} onTogglePause={setPauseBetweenStages} onOpenAbout={openAbout} />
+      <AppHeader
+        pauseBetweenStages={pauseBetweenStages}
+        onTogglePause={setPauseBetweenStages}
+        onOpenAbout={openAbout}
+        onLogoClick={handleExitToSessions}
+      />
       {aboutPage}
       <main style={{ padding: "var(--space-6)", maxWidth: "720px", margin: "0 auto" }}>
       {!snapshot ? (
@@ -399,6 +415,7 @@ export default function HomePage() {
                 onOpen={handleOpenSession}
                 onDelete={handleDeleteSession}
                 onNewSession={handleStartNewSession}
+                deletingSessionId={deletingSessionId}
               />
             </>
           ) : (
