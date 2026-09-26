@@ -4,6 +4,7 @@ import { getPool } from "../../../../../lib/db/pool";
 import { getGraph } from "../../../../../lib/agent/runtime";
 import { stageKind } from "../../../../../lib/stage-kind";
 import { dishImageUrl } from "../../../../../lib/image-url";
+import { resolveLiveDishImage } from "../../../../../lib/dish-image-fallback";
 import type { State } from "../../../../../lib/agent/state";
 
 export const runtime = "nodejs";
@@ -38,10 +39,22 @@ export async function GET(
   }
 
   const state = snapshot.values as State;
+
+  // Only for the branch's actual current tip — an older checkpoint keeps
+  // showing its own recorded image unchanged (FR-009a). Determined by
+  // re-reading state with no checkpoint override rather than trusting the
+  // caller's own intent, matching how this route already treats every other
+  // piece of derived truth.
+  const liveTip = await graph.getState({ configurable: { thread_id: branchId } });
+  const isLiveTip = liveTip.config.configurable?.checkpoint_id === checkpointId;
+  const dishImage = isLiveTip
+    ? await resolveLiveDishImage(sid, branchId, state.dishImage, pool)
+    : state.dishImage;
+
   return NextResponse.json({
     checkpointId: snapshot.config.configurable?.checkpoint_id,
-    state,
-    dishImageUrl: dishImageUrl(state.dishImage),
+    state: { ...state, dishImage },
+    dishImageUrl: dishImageUrl(dishImage),
     next: snapshot.next,
     kind: stageKind(state.outcome),
   });

@@ -510,6 +510,50 @@ describe("POST /api/recipe/:sid/step", () => {
     expect(originalJson.state.dishImage.imageId).toBe(originalImageId);
   });
 
+  // Regression for a real, second production data-loss finding (research.md's
+  // dish-image-generation addendum): every "Generate photo" retry shares one
+  // parent checkpoint with every prior attempt (structurally required — a
+  // finalized checkpoint is terminal), and multiple successful sibling
+  // checkpoints of that one parent can collide on the same channel-version
+  // number for `dishImage` in `@langchain/langgraph-checkpoint-postgres` —
+  // only one write survives, and a later read of "the current state" can
+  // come back with no image even though one was really produced. This
+  // suite's own pglite doesn't reliably reproduce that exact collision, so
+  // it's simulated directly (stripping the live tip's own `dishImage`
+  // channel-version pointer) rather than relied on to happen naturally.
+  it("the live tip falls back to the session's own thumbnail record when its own dishImage pointer is missing", async () => {
+    queueImageSuccess();
+    const { sid, branchId, finalizeJson } = await driveToFinalize("client-dishimage-fallback");
+    const realImageId = finalizeJson.state.dishImage.imageId;
+
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `SELECT checkpoint FROM checkpoints WHERE thread_id=$1 AND checkpoint_id=$2`,
+      [branchId, finalizeJson.checkpointId],
+    );
+    const corrupted = { ...rows[0].checkpoint };
+    const versions = { ...corrupted.channel_versions };
+    delete versions.dishImage;
+    corrupted.channel_versions = versions;
+    await pool.query(`UPDATE checkpoints SET checkpoint = $1::jsonb WHERE thread_id=$2 AND checkpoint_id=$3`, [
+      JSON.stringify(corrupted),
+      branchId,
+      finalizeJson.checkpointId,
+    ]);
+
+    const res = await stateGET(
+      new Request(
+        `http://localhost/api/recipe/${sid}/state?branchId=${branchId}&checkpointId=${finalizeJson.checkpointId}`,
+        { headers: { "X-Client-Id": "client-dishimage-fallback" } },
+      ),
+      { params: Promise.resolve({ sid }) },
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.state.dishImage.imageId).toBe(realImageId);
+    expect(json.dishImageUrl).not.toBeNull();
+  });
+
   it("retry-image 400s when the branch has no finalized recipe yet (never sent a stale/invalid one from the client)", async () => {
     // Regression coverage for a real production bug: the original design
     // had the client send its own copy of `finalRecipe` back for

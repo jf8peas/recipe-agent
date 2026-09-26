@@ -25,3 +25,17 @@ export async function getImageById(
   const { rows } = await pool.query("SELECT * FROM images WHERE image_id = $1", [imageId]);
   return rows[0] ? ImageRowSchema.parse(rows[0]) : null;
 }
+
+/** Just the owning branch's `thread_id` — used to check whether a session's
+ * denormalized thumbnail belongs to the branch currently being viewed
+ * (`lib/dish-image-fallback.ts`), without fetching the image's own bytes. */
+export async function getImageThreadId(
+  imageId: string,
+  pool: Pool = getPool(),
+): Promise<string | null> {
+  const { rows } = await pool.query<{ thread_id: string }>(
+    "SELECT thread_id FROM images WHERE image_id = $1",
+    [imageId],
+  );
+  return rows[0]?.thread_id ?? null;
+}

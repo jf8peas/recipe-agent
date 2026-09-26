@@ -267,3 +267,26 @@ completing in ~32s total, well inside the 60s ceiling.
   session/branch exists yet to abort against), so the Cancel button is
   omitted rather than rendered inert, matching how `onPause` was already
   handled.
+- **A second, distinct production data-loss bug found and fixed
+  (2026-09-26)**: a session showed a photo in the session list but not on
+  its own final recipe tab. Distinct from the earlier `finalRecipe`-loss
+  incident — this one needs no `updateState` at all. Every "Generate photo"
+  retry is a plain `invoke()`-created sibling of the *same* parent
+  checkpoint (structurally required, and confirmed safe for retries in
+  research R3/T016) — but multiple successful siblings of one parent can
+  still collide on the same channel-version number for `dishImage` in
+  `@langchain/langgraph-checkpoint-postgres`, since versioning is relative
+  to the shared parent, not unique per sibling. Only one write survives;
+  `updateSessionThumbnail` (which reads each attempt's in-memory result
+  directly, never the checkpoint store) stayed correct throughout, which is
+  why the list thumbnail was right while the checkpoint read was not. Fixed
+  by adding `lib/dish-image-fallback.ts`'s `resolveLiveDishImage()`: for a
+  branch's actual current tip only (re-derived server-side, never trusted
+  from the caller) and only when the session's thumbnail image belongs to
+  *that same branch* (not a sibling fork's), prefer the session's own
+  `thumbnail_*` columns over the checkpoint's own `dishImage` field. Browsing
+  history is untouched (FR-009a). See specs/007-dish-image-generation/
+  research.md's new R8 for the full mechanism, including why this is a
+  distinct bug from R6/R7 and a deliberate trade-off it accepts. The one
+  affected session was recovered with the same kind of targeted, blob-only
+  `INSERT`/checkpoint-pointer fix as the first incident.

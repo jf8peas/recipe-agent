@@ -532,3 +532,83 @@ image block — asserts `dishImage` is produced with the correct
 text with no image block at all, `response.content` not even an array —
 asserts graceful `dishImage: null`, matching every other image-failure
 mode).
+
+## R8. A second checkpoint-blob collision — this time between two SUCCESSFUL siblings, added post-deploy, from real usage
+
+**What was observed**: a real session ("Spicy Malaysian Belacan Prawn
+Stir-Fry with Rice Noodles") showed a photo in the session list but not on
+its own final recipe tab. Diagnosed the same way as the earlier
+`finalRecipe`-loss incident (CLAUDE.md's "Production data-loss bug found and
+fixed" entry, this spec's own R6/R7 pattern of querying production directly):
+the branch's live tip had `dishImage: null` in `graph.getState()`, yet the
+`images` table held exactly one real image for that thread, and
+`sessions.thumbnail_image_id` correctly pointed at it.
+
+**Root cause — distinct from the earlier one**: that earlier bug was about
+`updateState` writing onto an already-branched checkpoint. This one needs no
+`updateState` at all. This thread had **five separate successful
+`finalize`/"Generate photo" attempts**, every one a plain `invoke()`-created
+sibling of the *same* parent checkpoint (structurally required — a
+finalized checkpoint is terminal, so a retry has nowhere else to branch
+from; confirmed safe for retries in R3/T016). All five siblings' checkpoint
+rows point to the identical channel-version number for `dishImage`
+(`@langchain/langgraph-checkpoint-postgres` versions a channel relative to
+its shared parent, not per-sibling-uniquely) — a genuine primary-key
+collision on `checkpoint_blobs (thread_id, checkpoint_ns, channel,
+version)`. Only one write to that exact slot survives; in this case it was
+`null` (one of the five attempts' own image generation legitimately failed,
+and that attempt's write happened to be the one left standing). Every
+sibling's own checkpoint row still points at that same slot, so `getState()`
+returns `null` regardless of which specific attempt is read back — even
+though `updateSessionThumbnail` had already correctly captured the real
+image, because that call reads the successful attempt's own in-memory
+return value directly, never by re-reading the checkpoint store afterward.
+
+**Why R3's "confirmed safe" claim didn't cover this**: it was validated for
+*retries with the same input* (parseIngredients, proposeDirections, etc.) —
+scenarios where every sibling of a parent produces the same class of
+content, so even a version-key collision is invisible (the colliding values
+are identical). Feature 007's "Generate photo" is the first case where
+different siblings of one parent can legitimately produce **different**
+content (a new image each time, or a failure) — the collision became
+visible precisely because retry-image was designed to make one thing
+`updateState`'s "safe" sibling-creation pattern was never exercised against.
+
+**Fix**: rather than trying to make LangGraph's own checkpoint versioning
+collision-proof (not fixable from application code), the final recipe tab's
+photo is now sourced from whichever is reliable for the situation:
+`lib/dish-image-fallback.ts`'s `resolveLiveDishImage()` prefers the
+session's own `thumbnail_*` columns over the checkpoint's own `dishImage`
+field — but **only** when (a) the checkpoint being read is the branch's
+actual current tip (re-derived server-side by comparing against a
+tip-only `getState()` call, never trusted from the caller — matching how
+this route already treats every other piece of derived truth) and (b) the
+session's thumbnail image actually belongs to *this* branch, not a sibling
+fork's (`images.thread_id`, checked via a new `getImageThreadId()` — a
+session's thumbnail is scoped to the whole session, and a fork means a
+second branch could otherwise leak in). Browsing an older, historical
+checkpoint is untouched — it keeps showing exactly what it recorded, per
+FR-009a, since the fallback never applies there. Wired into
+`app/api/recipe/[sid]/state/route.ts` (the read path every resume/refresh
+goes through) — `app/api/recipe/[sid]/step/route.ts`'s own success response
+needed no change, since it already returns the freshly-`invoke()`d in-memory
+result directly, the same uncorrupted source `updateSessionThumbnail`
+itself reads from; only a *later* re-read of "the current state" via
+`getState()` can ever observe the collision.
+
+**A deliberate trade-off, not a gap**: if a *later* attempt on a branch
+that already has a photo genuinely fails (a real image-generation failure,
+not a collision), this fallback means the final tab keeps showing the last
+successful photo rather than reverting to the placeholder. Indistinguishable
+from the collision case using only the checkpoint's own state, and arguably
+the better default anyway — a failed regeneration attempt has no reason to
+throw away a perfectly good existing photo.
+
+**Test coverage**: `tests/contract/step.test.ts` simulates the exact
+collision directly (stripping the live tip's `dishImage` channel-version
+pointer after a real successful `finalize`) rather than relying on this
+suite's own pglite to reproduce it naturally, and asserts `/state` recovers
+the correct image from the session's thumbnail record. The pre-existing
+retry-image test already covers the historical-checkpoint side (an older
+checkpoint keeps reporting its own original image after a later retry
+succeeds with a new one) without needing any change.
