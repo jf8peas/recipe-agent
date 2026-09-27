@@ -99,6 +99,14 @@ export default function HomePage() {
   // cleared the busy state for BOTH rows and the still-in-flight one's
   // buttons re-enabled while its delete was still pending.
   const [deletingSessionIds, setDeletingSessionIds] = useState<Set<string>>(() => new Set());
+  // Focus management for returning to the list (research: WCAG 2.4.3 focus
+  // order after a view change) — `sessionListRef` finds the rendered rows,
+  // `focusListTopOnReturnRef` is a one-shot flag set by `handleExitToSessions`
+  // so this only fires on an actual return, never on first load or after a
+  // delete/rename leaves the list showing. A ref, not state — this doesn't
+  // need to trigger a render, just survive until the next effect run.
+  const sessionListRef = useRef<HTMLUListElement>(null);
+  const focusListTopOnReturnRef = useRef(false);
   // Owned here (not self-managed by `AppHeader`) so the entry form's intro
   // can open About straight to its agent-graph section, not just the header.
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -165,6 +173,20 @@ export default function HomePage() {
     void sessionList.refreshFromServer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, restoring, snapshot]);
+
+  // Moves focus to the list's top row after returning from a session
+  // (`handleExitToSessions` sets the one-shot flag below) — that row is
+  // always the one just left, since `touch()`/`refreshFromServer` both keep
+  // the list ordered most-recently-active-first. Without this, focus is
+  // simply wherever it was on the now-unmounted running-session view (the
+  // browser drops it to `<body>`), which is a real WCAG 2.4.3 gap: nothing
+  // tells a keyboard/screen-reader user where they landed or that the list
+  // just reordered around them.
+  useEffect(() => {
+    if (!focusListTopOnReturnRef.current || view !== "list" || snapshot) return;
+    focusListTopOnReturnRef.current = false;
+    sessionListRef.current?.querySelector<HTMLButtonElement>("li button")?.focus();
+  }, [view, snapshot, sessionList.entries]);
 
   // Another tab deleted the session we're looking at (spec FR-033/T094).
   useEffect(() => {
@@ -411,6 +433,7 @@ export default function HomePage() {
    * whether this session was originally opened from there or started fresh
    * from the entry form. */
   function handleExitToSessions() {
+    focusListTopOnReturnRef.current = true;
     reset();
     setView("list");
   }
@@ -441,6 +464,7 @@ export default function HomePage() {
                 onDelete={handleDeleteSession}
                 onNewSession={handleStartNewSession}
                 deletingSessionIds={deletingSessionIds}
+                listRef={sessionListRef}
               />
             </>
           ) : (

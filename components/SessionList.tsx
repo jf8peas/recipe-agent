@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import type { LocalSessionEntry } from "@/hooks/useSessionList";
 import { Button } from "@/components/ui/Button";
 import { ListRow } from "@/components/ui/ListRow";
@@ -13,12 +14,16 @@ interface SessionListProps {
    * independent. That row's buttons disable and show a busy state instead
    * of staying clickable. */
   deletingSessionIds?: Set<string>;
+  /** Attached to the `<ul>` — lets `app/page.tsx` find and focus the first
+   * row's Open button after returning from a session (that row is always
+   * the one just left, since `touch()` moves it to the front). */
+  listRef?: Ref<HTMLUListElement>;
 }
 
 /** The on-device session list (spec FR-004, SC-018): resume or delete a past
  * session, or start a new one. No navigation — this just switches what the
  * single `/` route renders (spec FR-003b). */
-export function SessionList({ entries, onOpen, onDelete, onNewSession, deletingSessionIds }: SessionListProps) {
+export function SessionList({ entries, onOpen, onDelete, onNewSession, deletingSessionIds, listRef }: SessionListProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
       <Button variant="primary" onClick={onNewSession} style={{ alignSelf: "flex-start" }}>
@@ -28,7 +33,10 @@ export function SessionList({ entries, onOpen, onDelete, onNewSession, deletingS
       {entries.length === 0 ? (
         <p style={{ margin: 0, color: "var(--color-text-muted)" }}>No sessions yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+        <ul
+          ref={listRef}
+          style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}
+        >
           {entries.map((entry) => (
             <ListRow
               key={entry.sessionId}

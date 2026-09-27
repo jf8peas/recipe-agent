@@ -303,3 +303,16 @@ completing in ~32s total, well inside the 60s ceiling.
   indefinitely. Fixed by dropping that `entries.length === 0` gate: the list
   now refreshes from `/mine` (which mints fresh URLs for every row) every
   time it's shown, not just when empty.
+- Returning to the session list via "Back to your sessions" (or the header
+  logo) left focus wherever it happened to be on the now-unmounted
+  running-session view — the browser drops it to `<body>`, a real WCAG
+  2.4.3 gap given the list also reorders around the visitor (the session
+  just left moves to the top via `touch()`/`refreshFromServer`, so nothing
+  indicated where they'd landed or that anything had moved). Fixed in
+  `app/page.tsx`: `handleExitToSessions` sets a one-shot
+  `focusListTopOnReturnRef` flag; a new effect (alongside the existing
+  `/mine`-refresh one) focuses the list's first row's Open button once the
+  list view is actually showing, then clears the flag. `SessionList.tsx`
+  takes a new `listRef` prop (attached to its `<ul>`) so `app/page.tsx` can
+  find that row without `SessionList` needing to know anything about focus
+  management itself.

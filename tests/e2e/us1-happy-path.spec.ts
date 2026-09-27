@@ -60,3 +60,31 @@ test("US1 happy path: start -> step through all stages -> finalized recipe", asy
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Final recipe" })).toBeVisible();
 });
+
+test("US1: returning to the session list via \"Back to your sessions\" focuses the top row — the session just left, which the list always reorders to the front", async ({
+  page,
+}) => {
+  await startSession(page, ["2 eggs"]);
+  await page.getByRole("button", { name: "Back to your sessions" }).click();
+  await expect(page.getByRole("heading", { name: "Your sessions" })).toBeVisible();
+
+  // A second session, started after the first — leaving it should put IT at
+  // the top of the list (touch()/refreshFromServer both order
+  // most-recently-active-first), so focus landing on row 0 is meaningful,
+  // not a coincidence of there being only one row.
+  await page.getByRole("button", { name: "Start a new session" }).click();
+  await page.getByLabel("Ingredients (one per line)").fill("3 eggs");
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Step \(/ })).toBeVisible();
+  await page.getByRole("button", { name: "Back to your sessions" }).click();
+
+  // Without this fix, focus is simply wherever it was on the now-unmounted
+  // running-session view — the browser drops it to <body>, leaving a
+  // keyboard/screen-reader user with no indication of where they landed or
+  // that the list just reordered around them (WCAG 2.4.3).
+  await expect(page.getByRole("heading", { name: "Your sessions" })).toBeVisible();
+  const rows = page.locator("li");
+  await expect(rows).toHaveCount(2);
+  const topRowOpenButton = rows.nth(0).getByRole("button").first();
+  await expect(topRowOpenButton).toBeFocused();
+});
