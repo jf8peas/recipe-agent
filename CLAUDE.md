@@ -316,3 +316,13 @@ completing in ~32s total, well inside the 60s ceiling.
   takes a new `listRef` prop (attached to its `<ul>`) so `app/page.tsx` can
   find that row without `SessionList` needing to know anything about focus
   management itself.
+- "Pause between stages" (`AppHeader.tsx`'s `Toggle`) stayed flippable while
+  Auto-run (`useAutoRun.ts`) was actually mid-stage — flipping it wouldn't
+  have affected the request already in flight, so it was a false affordance.
+  Added a `disabled` prop to `components/ui/Toggle.tsx` (blocks click/
+  keyboard, `tabIndex={-1}`, `aria-disabled`, matching how `Button.tsx`
+  already signals disabled) and a `pauseToggleDisabled` prop on `AppHeader`,
+  wired at both its `app/page.tsx` call sites to `autoRun.running` — the
+  toggle disables the moment Play starts and re-enables the moment the run
+  actually stops (finalize, an error, Cancel, or Pause), not just visually
+  but for real interaction.

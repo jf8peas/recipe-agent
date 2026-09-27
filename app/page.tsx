@@ -332,6 +332,7 @@ export default function HomePage() {
         <AppHeader
           pauseBetweenStages={pauseBetweenStages}
           onTogglePause={setPauseBetweenStages}
+          pauseToggleDisabled={autoRun.running}
           onOpenAbout={openAbout}
           onLogoClick={handleExitToSessions}
         />
@@ -443,6 +444,7 @@ export default function HomePage() {
       <AppHeader
         pauseBetweenStages={pauseBetweenStages}
         onTogglePause={setPauseBetweenStages}
+        pauseToggleDisabled={autoRun.running}
         onOpenAbout={openAbout}
         onLogoClick={handleExitToSessions}
       />

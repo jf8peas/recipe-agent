@@ -45,6 +45,27 @@ test.describe("US1: one shared header, two states", () => {
     await expect(toggle).toHaveAttribute("aria-checked", "false");
   });
 
+  test("the pause toggle disables itself during Auto-run and re-enables once the run finishes", async ({ page }) => {
+    await startSession(page, ["2 eggs", "spinach"]);
+    const toggle = page.getByRole("switch", { name: "Pause between stages" });
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    // Turn off "Pause between stages" so the toolbar offers "Play" (Auto-run)
+    // instead of a manual "Step" button.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    await page.getByRole("button", { name: "Play" }).click();
+    await expect(toggle).toBeDisabled();
+
+    // Runs unattended to a terminal outcome (the fake-model fixture resolves
+    // every stage instantly) — the toggle must stay un-togglable the whole
+    // time, not just at the moment Play was clicked.
+    await expect(page.getByRole("button", { name: "Start a new session" })).toBeVisible();
+    await expect(toggle).toBeEnabled();
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+  });
+
   test("header has no a11y violations, light or dark", async ({ page }) => {
     await page.goto("/");
     await expectNoA11yViolations(page);

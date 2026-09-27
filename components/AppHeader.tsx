@@ -17,6 +17,12 @@ export interface AppHeaderProps {
   // feature (the standard `app/layout.tsx` call site keeps using this).
   pauseBetweenStages?: boolean;
   onTogglePause?: (next: boolean) => void;
+  /** Disables "Pause between stages" while Auto-run is actually mid-stage
+   * (`app/page.tsx`'s own `autoRun.running`) — re-enabled the moment the run
+   * stops, whether that's finalize, an error, Cancel, or Pause itself.
+   * Flipping it mid-flight wouldn't affect the request already in progress
+   * anyway; disabling it avoids the false impression that it would. */
+  pauseToggleDisabled?: boolean;
   /** When provided, the caller owns the About page (and renders it itself);
    * `sectionId` is the section to land on, or null for the top. */
   onOpenAbout?: (sectionId: string | null) => void;
@@ -130,6 +136,7 @@ export function AppHeader({
   mode = "app",
   pauseBetweenStages: pauseProp,
   onTogglePause,
+  pauseToggleDisabled = false,
   onOpenAbout,
   onLogoClick,
   onReturn,
@@ -233,6 +240,7 @@ export function AppHeader({
             onChange={handleTogglePause}
             label="Pause between stages"
             describedById="pause-between-stages-hint"
+            disabled={pauseToggleDisabled}
           />
           <span id="pause-between-stages-hint" style={visuallyHiddenStyle}>
             When off, the assistant advances through stages automatically (Auto-run).

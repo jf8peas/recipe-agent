@@ -10,13 +10,19 @@ export interface ToggleProps {
    * extra description — preserves `AppHeader.tsx`'s pre-existing
    * "Auto-run" hint text via `aria-describedby` on the switch itself. */
   describedById?: string;
+  /** Blocks clicks/keyboard toggling and removes it from tab order, same as
+   * a native `<input disabled>` — used for "Pause between stages" while
+   * Auto-run is actually mid-stage, so it can't be flipped out from under a
+   * run already in flight. */
+  disabled?: boolean;
 }
 
 /** Direct port of `design/v003/design_files/Toggle.jsx`'s switch control
  * (spec 006 US1) — replaces the raw `<input type="checkbox">` previously
  * used for "Pause between stages". */
-export function Toggle({ checked, onChange, label, describedById }: ToggleProps) {
+export function Toggle({ checked, onChange, label, describedById, disabled = false }: ToggleProps) {
   function handleKeyDown(e: KeyboardEvent<HTMLSpanElement>) {
+    if (disabled) return;
     if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
       onChange(!checked);
@@ -30,8 +36,9 @@ export function Toggle({ checked, onChange, label, describedById }: ToggleProps)
         alignItems: "center",
         gap: "var(--space-2)",
         fontSize: "var(--text-sm)",
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
         userSelect: "none",
+        opacity: disabled ? 0.6 : 1,
       }}
     >
       <span
@@ -39,8 +46,11 @@ export function Toggle({ checked, onChange, label, describedById }: ToggleProps)
         aria-checked={checked}
         aria-label={label}
         aria-describedby={describedById}
-        tabIndex={0}
-        onClick={() => onChange(!checked)}
+        aria-disabled={disabled || undefined}
+        tabIndex={disabled ? -1 : 0}
+        onClick={() => {
+          if (!disabled) onChange(!checked);
+        }}
         onKeyDown={handleKeyDown}
         style={{
           position: "relative",
