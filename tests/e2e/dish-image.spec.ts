@@ -138,6 +138,54 @@ test("US2: the session list shows the same thumbnail after localStorage is clear
   await expectNoA11yViolations(page);
 });
 
+// Regression: a cached thumbnail's signed URL carries a 24h expiry
+// (lib/image-url.ts) baked in at the moment it was last signed — previously
+// only ever re-signed by opening that specific session (`touch()`). A
+// session left untouched for a day+ showed a broken image on the list until
+// individually opened. Fixed by refreshing the whole list from `/mine`
+// (which mints fresh URLs) every time it's shown, not just when localStorage
+// came up empty.
+test("US2: a thumbnail's signed URL that's gone stale is refreshed automatically when the list is shown, not left broken", async ({
+  page,
+}) => {
+  await startSession(page, ["2 eggs", "spinach"]);
+  while (await page.getByRole("button", { name: /^Step \(/ }).isVisible()) {
+    await clickStep(page);
+  }
+  await page.getByRole("button", { name: "Back to your sessions" }).click();
+  await expect(page.getByRole("heading", { name: "Your sessions" })).toBeVisible();
+
+  // Simulates the cached URL going stale from time passing (an expired but
+  // otherwise well-formed `exp`) without touching anything else — the
+  // session stays in the local list, only its own persisted URL is now
+  // invalid, exactly as it would be a day after it was last (re)signed.
+  await page.evaluate(() => {
+    const entries = JSON.parse(localStorage.getItem("recipe-agent.sessions") ?? "[]");
+    for (const entry of entries) {
+      if (entry.thumbnail) entry.thumbnail.url = entry.thumbnail.url.replace(/exp=\d+/, "exp=1");
+    }
+    localStorage.setItem("recipe-agent.sessions", JSON.stringify(entries));
+    localStorage.removeItem("recipe-agent.currentSessionId");
+  });
+  await page.reload();
+
+  await expect(page.getByRole("heading", { name: "Your sessions" })).toBeVisible();
+  const thumb = page
+    .locator("li")
+    .filter({ has: page.getByRole("button", { name: /Spinach Frittata/ }) })
+    .getByRole("img");
+  // The background refresh from /mine re-signs every row's URL — this must
+  // resolve to a real, loaded image, not the stale one still sitting in
+  // localStorage the instant the page first paints.
+  await expect(thumb).toBeVisible();
+  const src = await thumb.getAttribute("src");
+  const exp = Number(new URL(src!, "http://localhost").searchParams.get("exp"));
+  expect(exp).toBeGreaterThan(Date.now() / 1000);
+  await expect
+    .poll(async () => thumb.evaluate((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0))
+    .toBe(true);
+});
+
 /** Part 3 (US3) — an image failure alone never turns into a stage failure
  * or loses the recipe text (FR-003/004); both the final tab and the
  * session list fall back to the placeholder. */

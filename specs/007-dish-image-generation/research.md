@@ -612,3 +612,42 @@ the correct image from the session's thumbnail record. The pre-existing
 retry-image test already covers the historical-checkpoint side (an older
 checkpoint keeps reporting its own original image after a later retry
 succeeds with a new one) without needing any change.
+
+## R9. Session-list thumbnails going stale after 24h — added post-deploy, from real usage
+
+**What was observed**: a screenshot of the session list showed a real
+thumbnail for a session finalized minutes earlier, but broken images (alt
+text next to a browser's default broken-image icon) for every older session
+— specifically, everything more than a day old. Opening one of those
+recipes and returning to the list fixed just that one row.
+
+**Root cause**: R4 (serving images under device-private ownership) chose
+signed, short-lived URLs (`lib/image-url.ts`'s `signImageUrl`, 24h default
+TTL via `IMAGE_URL_SECRET`-based HMAC) over a header-based fetch, since
+`<img src>` can't send `X-Client-Id`. That signature is minted once, server
+side, and the URL is treated as a normal string thereafter — including
+being persisted into `localStorage` by `hooks/useSessionList.ts`'s
+`touch()`, which is how the on-device list avoids a server round trip for
+instant rendering. The only thing that ever re-signed a session's stored URL
+was `touch()` firing again — which only happens when *that specific
+session* is opened (`app/page.tsx`'s "keep the on-device list in sync"
+effect). `app/page.tsx`'s only call to `sessionList.refreshFromServer()`
+(which re-signs every row via a fresh `GET /mine`) was gated behind
+`sessionList.entries.length === 0` — the FR-032 "localStorage came up
+empty" case only. A session sitting untouched for more than a day carried a
+URL whose `exp` had already passed `lib/image-url.ts`'s own
+`verifyImageUrl()` check, and nothing was refreshing it.
+
+**Fix**: dropped the `entries.length === 0` gate — the list now calls
+`refreshFromServer()` every time it's shown (the effect's existing
+dependency array, `[clientId, restoring, snapshot]`, already re-fires on
+every return to the list from a running session), re-signing every row's
+URL unconditionally rather than only the ones a visitor happens to open.
+`signImageUrl`'s TTL itself is unchanged (24h) — the bug was the absence of
+a standing refresh, not the TTL being too short.
+
+**Test coverage**: a new e2e test (`tests/e2e/dish-image.spec.ts`) simulates
+a stale URL directly (rewriting a cached entry's `exp` query param to a
+past timestamp, the same shape a real 24h-old sign would have) and asserts
+the list still renders a real, loaded image after a reload — not the stale
+`src` still sitting in `localStorage` at first paint.

@@ -290,3 +290,16 @@ completing in ~32s total, well inside the 60s ceiling.
   distinct bug from R6/R7 and a deliberate trade-off it accepts. The one
   affected session was recovered with the same kind of targeted, blob-only
   `INSERT`/checkpoint-pointer fix as the first incident.
+- Session-list thumbnails went missing (broken `<img>`, alt text showing
+  instead) for any session not opened in over a day, rendering correctly
+  again only after opening that recipe and returning to the list. Root
+  cause: `lib/image-url.ts`'s signed image URLs carry a 24h expiry baked in
+  at sign time, and `hooks/useSessionList.ts`'s `touch()` persists that URL
+  into `localStorage` — but the only thing that ever called `touch()` again
+  (re-signing with a fresh 24h window) was opening that specific session.
+  `app/page.tsx`'s own effect only refreshed the whole list from `/mine`
+  when `localStorage` came up completely empty, never as a standing
+  refresh — so a session sitting untouched for 24h+ showed a broken image
+  indefinitely. Fixed by dropping that `entries.length === 0` gate: the list
+  now refreshes from `/mine` (which mints fresh URLs for every row) every
+  time it's shown, not just when empty.

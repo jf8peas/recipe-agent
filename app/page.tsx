@@ -150,11 +150,19 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot?.sessionId, currentTitle, currentDishImageId]);
 
-  // Rebuild the list from /mine if localStorage came up empty (spec FR-032) —
-  // private browsing, cleared site data, or a first load on this device.
+  // Refreshes the list from /mine every time it's shown, not just when
+  // localStorage came up empty (spec FR-032's original case — private
+  // browsing, cleared site data, a first load on this device). A session's
+  // cached thumbnail URL is signed with a 24h expiry (lib/image-url.ts) and
+  // was previously only ever re-signed by `touch()`, which fires when THAT
+  // session is opened — so a session left untouched for a day+ showed a
+  // broken image on the list (a real report: thumbnails missing until you
+  // opened the recipe and came back, which happened to re-sign just that
+  // one row). Refreshing on every list view re-signs every row's URL
+  // unconditionally, so this can't go stale purely from time passing.
   useEffect(() => {
     if (!clientId || restoring || snapshot) return;
-    if (sessionList.entries.length === 0) void sessionList.refreshFromServer();
+    void sessionList.refreshFromServer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, restoring, snapshot]);
 
