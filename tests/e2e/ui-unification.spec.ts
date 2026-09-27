@@ -446,6 +446,31 @@ test.describe("US4: session list, entry form, running session, and About page sh
     expect(listButtonColor).toBe(runButtonColor);
   });
 
+  // Regression: the entry screen's own "Back to your sessions" control used
+  // to be a bare underlined-text button (real <button> element, but styled
+  // to look like a link) instead of the shared secondary Button every other
+  // screen uses for the exact same action (ActionToolbar/StageFailureBanner).
+  test("the entry screen's \"Back to your sessions\" button visually matches the running session's own", async ({
+    page,
+  }) => {
+    await startSession(page, ["2 eggs"]);
+    const runningBackButton = page.getByRole("button", { name: "Back to your sessions" });
+    const runningBg = await runningBackButton.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const runningBorder = await runningBackButton.evaluate((el) => getComputedStyle(el).borderColor);
+
+    await runningBackButton.click();
+    await expect(page.getByRole("heading", { name: "Your sessions" })).toBeVisible();
+    await page.getByRole("button", { name: "Start a new session" }).click();
+
+    const entryBackButton = page.getByRole("button", { name: "Back to your sessions" });
+    await expect(entryBackButton).toBeVisible();
+    const entryBg = await entryBackButton.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const entryBorder = await entryBackButton.evaluate((el) => getComputedStyle(el).borderColor);
+
+    expect(entryBg).toBe(runningBg);
+    expect(entryBorder).toBe(runningBorder);
+  });
+
   test("session list and entry form have no a11y violations, light or dark", async ({ page }) => {
     await page.goto("/");
     await expectNoA11yViolations(page);

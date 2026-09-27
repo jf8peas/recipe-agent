@@ -8,6 +8,7 @@ import { useAutoRun } from "@/hooks/useAutoRun";
 import { useAdvanceLock } from "@/hooks/useAdvanceLock";
 import { usePauseBetweenStages } from "@/hooks/usePauseBetweenStages";
 import { AppHeader } from "@/components/AppHeader";
+import { Button } from "@/components/ui/Button";
 import { AboutPage } from "@/components/about/AboutPage";
 import { ENTRY_INTRO_BODY, ENTRY_INTRO_LINK_LABEL, ENTRY_INTRO_TITLE } from "@/lib/about-content";
 import { EntryForm } from "@/components/EntryForm";
@@ -513,22 +514,13 @@ export default function HomePage() {
                 </div>
               )}
               {sessionList.entries.length > 0 && (
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
                   onClick={() => setView("list")}
-                  style={{
-                    marginTop: "var(--space-3)",
-                    font: "inherit",
-                    color: "var(--color-accent)",
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                    textDecoration: "underline",
-                  }}
+                  style={{ marginTop: "var(--space-3)" }}
                 >
                   Back to your sessions
-                </button>
+                </Button>
               )}
             </>
           )}

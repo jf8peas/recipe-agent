@@ -326,3 +326,9 @@ completing in ~32s total, well inside the 60s ceiling.
   toggle disables the moment Play starts and re-enables the moment the run
   actually stops (finalize, an error, Cancel, or Pause), not just visually
   but for real interaction.
+- The entry screen's own "Back to your sessions" control was a bare
+  underlined-text `<button>` (a real button element, just styled to look
+  like a link) instead of the shared secondary `Button` every other screen
+  uses for the exact same action (`ActionToolbar`/`StageFailureBanner`).
+  `app/page.tsx` now renders it via `<Button variant="secondary">`, matching
+  everywhere else.
