@@ -377,14 +377,22 @@ export function AgentGraphProgress({
           const style = shapeStyle(state);
           const lines = (STAGE_PREFIX[state] + NODE_LABELS[node.name]).split("\n");
           const isSelected = selectedNode === node.name;
+          // Matches `visibleTabs()` (lib/run-tabs.ts): only a "taken" stage
+          // ever has a visible tab for `onSelectNode` to jump to — clicking
+          // a "current"/"not-yet-reached"/"untaken" node is a no-op in
+          // `app/page.tsx`'s `handleSelectNode`, so the cursor must agree
+          // rather than promising a click that does nothing.
+          // `ingredientError` is excluded even when "taken": it maps to no
+          // tab at all (`STAGE_TO_TAB.ingredientError = null`).
+          const isClickable = Boolean(onSelectNode) && state === "taken" && node.name !== "ingredientError";
           return (
             <g
               key={node.name}
               data-testid={`agent-graph-node-${node.name}`}
               data-node-state={state}
               data-selected={isSelected ? "true" : "false"}
-              style={{ opacity: style.opacity ?? 1, cursor: onSelectNode ? "pointer" : undefined }}
-              onClick={onSelectNode ? () => onSelectNode(node.name) : undefined}
+              style={{ opacity: style.opacity ?? 1, cursor: isClickable ? "pointer" : undefined }}
+              onClick={isClickable ? () => onSelectNode!(node.name) : undefined}
             >
               {isSelected &&
                 (node.kind === "terminal" ? (

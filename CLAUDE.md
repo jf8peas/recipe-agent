@@ -433,5 +433,34 @@ completing in ~32s total, well inside the 60s ceiling.
   directly inside `lib/fork-replay.ts` — the `getStateHistory` read of the
   source thread, and each individual `updateState` call in the replay
   chain, each with its own elapsed-ms marker — to find out which *specific*
-  one of those few operations is the one that stalls. Not yet resolved;
-  waiting on the next occurrence's logs with this new detail.
+  one of those few operations is the one that stalls. **Root cause
+  confirmed and fixed (2026-09-28)**: that finer-grained logging showed
+  *every* `updateState` call taking ~6.5s, not just one — ruling out an
+  algorithmic hot spot and pointing at the network path itself. Vercel's
+  Node.js functions run in `iad1` (Washington, D.C.); the Neon project was
+  in `ap-southeast-2` (Sydney) — near-maximum great-circle distance. A
+  single logical `updateState()` needs several sequential Postgres round
+  trips (checkpoint row, one or more `checkpoint_blobs` rows, etc.) that
+  can't be pipelined into one, so at ~400-600ms/round-trip across that
+  distance, ~10 round trips/call compounds to the observed ~6.5s/call —
+  9 calls to replay a `finalize`-depth branch blows straight through the
+  60s ceiling. Confirmed not a checkpointer or Neon bug: the identical
+  `graph.updateState()` call run against the same production database from
+  a normal-latency location completed in 121-163ms. Fix was infrastructural,
+  not code: created a new Neon project (`recipe-agent-gamma`) in
+  **`us-east-1`** (N. Virginia — adjacent to Vercel's `iad1`), ran schema
+  setup (`runMigrations`) against it, then copied every table's data across
+  in FK-dependency order (`sessions` → `branches` → `images`, with
+  `sessions.thumbnail_image_id` patched in as a second pass since it
+  circularly references `images`, which references `branches`, which
+  references `sessions` — then `usage_events`, `checkpoints`,
+  `checkpoint_blobs`, `checkpoint_writes`). Row counts matched exactly (53
+  sessions, 76 branches, 21 images, 495 usage_events, 577 checkpoints, 2696
+  checkpoint_blobs, 1979 checkpoint_writes) with zero orphaned FK
+  references; a live spot-check loaded a real finalized session through the
+  actual `PostgresSaver`/`StateSchema` and confirmed the recipe, `dishImage`
+  reference, and image bytes all round-tripped correctly. `DATABASE_URL`
+  (local `.env` and Vercel's project env var) repointed at the new project;
+  the old Sydney project was only ever read from, never written to, so it
+  remains as an untouched fallback. Confirmed fixed against the live
+  deploy: the user reported the same class of `/fork` edit "super fast now."

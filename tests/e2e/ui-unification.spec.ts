@@ -208,9 +208,18 @@ test.describe("US3: stage tabs synced with the graph, action row always reachabl
     await expect(page.getByTestId("agent-graph-node-parseIngredients")).toHaveAttribute("data-selected", "false");
   });
 
-  test("clicking a not-yet-visible node's stage is a no-op", async ({ page }) => {
+  test("clicking a not-yet-visible node's stage is a no-op, and its cursor doesn't promise otherwise", async ({
+    page,
+  }) => {
     await startSession(page, ["2 eggs", "spinach"]);
     await expect(page.getByRole("tab", { name: "Ingredients" })).toHaveAttribute("aria-selected", "true");
+
+    // A node with no visible tab (not yet reached) must not show a pointer
+    // cursor — it previously did, unconditionally on `onSelectNode` being
+    // passed at all, regardless of whether this specific node's click would
+    // do anything.
+    await expect(page.getByTestId("agent-graph-node-finalize")).toHaveCSS("cursor", "auto");
+    await expect(page.getByTestId("agent-graph-node-parseIngredients")).toHaveCSS("cursor", "pointer");
 
     await page.getByTestId("agent-graph-node-finalize").click();
     await expect(page.getByRole("tab", { name: "Ingredients" })).toHaveAttribute("aria-selected", "true");
