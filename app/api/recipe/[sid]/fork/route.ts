@@ -36,6 +36,14 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ sid: string }> },
 ): Promise<NextResponse> {
+  // No model calls happen anywhere in this route (forkReplay is pure
+  // `updateState` replay, per its own doc comment) — so a 60s platform
+  // timeout here can only come from the DB/network side, not a slow LLM
+  // call. This route had zero timing diagnostics, unlike every other one
+  // already instrumented this session (`start`, `step`) — added after a
+  // real production timeout on `/fork` had no logging to pinpoint which
+  // specific operation actually stalled.
+  const requestStartedAt = Date.now();
   const { sid } = await params;
   const clientId = getClientId(request);
   if (!clientId) return jsonError(401, "missing-client-id", "X-Client-Id header is required.");
@@ -50,6 +58,7 @@ export async function POST(
   const ownership = await requireOwnedSession(sid, clientId, branchId, pool);
   if (!ownership.ok) return ownership.response;
   const { session } = ownership;
+  console.log(`[fork] ownership check done at ${Date.now() - requestStartedAt}ms`);
 
   const patchFields = Object.keys(patch);
   if (patchFields.length === 0) {
@@ -87,6 +96,7 @@ export async function POST(
   const newThreadId = mintThreadId();
   const graph = getGraph();
 
+  console.log(`[fork] calling forkReplay at ${Date.now() - requestStartedAt}ms`);
   let replay;
   try {
     replay = await forkReplay(graph, {
@@ -95,14 +105,20 @@ export async function POST(
       newThreadId,
       patch: patch as Partial<State>,
     });
-  } catch {
+  } catch (err) {
+    console.error(
+      `[fork] forkReplay threw after ${Date.now() - requestStartedAt}ms:`,
+      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    );
     return jsonError(404, "not-found", "That checkpoint no longer exists.");
   }
+  console.log(`[fork] forkReplay returned at ${Date.now() - requestStartedAt}ms`);
 
   await insertBranch(
     { threadId: newThreadId, sessionId: sid, parentThreadId: branchId, forkedFromCheckpointId: checkpointId },
     pool,
   );
+  console.log(`[fork] insertBranch done at ${Date.now() - requestStartedAt}ms`);
 
   // A fork's patch can jump straight to editing any of the three
   // title-bearing fields, not necessarily one stage at a time, so the
@@ -113,9 +129,11 @@ export async function POST(
   if (replay.state.outcome === "finalized" && replay.state.dishImage) {
     await updateSessionThumbnail(sid, replay.state.dishImage, pool);
   }
+  console.log(`[fork] title/thumbnail updates done at ${Date.now() - requestStartedAt}ms`);
 
   const branches = await getBranchesForSession(sid, pool);
   const timeline = await buildTimeline(graph, branches);
+  console.log(`[fork] buildTimeline done at ${Date.now() - requestStartedAt}ms`);
 
   return NextResponse.json({
     branchId: newThreadId,

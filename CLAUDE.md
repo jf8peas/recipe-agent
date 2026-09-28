@@ -406,4 +406,21 @@ completing in ~32s total, well inside the 60s ceiling.
   the whole run. Still not addressed: signed URLs get freshly re-minted on
   every `/mine`/`/state` call even for the same image, defeating the
   existing 24h browser cache on repeat views — a separate, smaller
-  optimization out of scope for this pass.
+  optimization out of scope for this pass. Ran it against production
+  immediately after: all 17 existing images converted, 0 failures, 25.3MB
+  -> 1.7MB total (a 93% reduction).
+- **Production `504` on `/fork` ("Try this version"), with zero diagnostics
+  to go on**: `app/api/recipe/[sid]/fork/route.ts` had never had any timing
+  logging added, unlike `start`/`step` earlier this session — a real
+  timeout there gave nothing but "Task timed out after 60 seconds," no clue
+  which operation actually stalled. The session involved (`stage_count: 7`,
+  one branch, 10 checkpoints) isn't remotely large enough to make
+  `forkReplay`'s own `updateState` chain (no model calls anywhere in this
+  route — confirmed by reading it) plausibly take 60s on its own, so the
+  likely cause is a transient DB/network hiccup rather than an algorithmic
+  bottleneck — but that's a guess, not a finding. Added the same
+  `console.log`-per-step timing pattern already used in `start`/`step`
+  (ownership check, before/after `forkReplay`, `insertBranch`, title/
+  thumbnail updates, `buildTimeline`, plus logging `forkReplay`'s own catch
+  block, previously silent) so a recurrence actually pinpoints the slow
+  operation instead of just reporting the platform-level timeout again.
