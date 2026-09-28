@@ -22,7 +22,8 @@ const testState = vi.hoisted(() => ({
     | "invalid-json"
     | "out-of-range"
     | "markdown-fenced-json"
-    | "markdown-fenced-json-no-image",
+    | "markdown-fenced-json-no-image"
+    | "prose-prefixed-json",
   finalRecipe: {
     title: "Spinach Frittata",
     servings: 2,
@@ -100,6 +101,20 @@ vi.mock("../../lib/agent/models", async (importOriginal) => {
               // that case (handleMultiModalOutput only wraps it when
               // OpenRouter's own `message.images` is populated).
               return { content: "```\n" + JSON.stringify({ focalX: 0.5, focalY: 0.5, zoom: 1.2 }) + "\n```" };
+            }
+            if (testState.imageBehavior === "prose-prefixed-json") {
+              // Observed in production, later than the markdown-fence case:
+              // google/gemini-2.5-flash-image sometimes prefaces the JSON
+              // with a full prose sentence and no fence at all.
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Here's your photo-realistic image of the Enoki & Cod Tempura:\n${JSON.stringify({ focalX: 0.5, focalY: 0.5 })}`,
+                  },
+                  { type: "image", url: "data:image/png;base64,AAAA" },
+                ],
+              };
             }
             return {
               content: [
@@ -290,6 +305,18 @@ describe("finalize", () => {
     const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
     expect(result.dishImage).not.toBeNull();
     expect(result.dishImage).toMatchObject({ focalX: 0.5, focalY: 0.5, zoom: 1.2 });
+    expect(result.outcome).toBe("finalized");
+  });
+
+  // Production regression, found later than the fence case above:
+  // google/gemini-2.5-flash-image sometimes prefaces the crop JSON with a
+  // full prose sentence ("Here's your photo-realistic image of...") and no
+  // fence at all — a plain `JSON.parse` throws on the leading "H".
+  it("succeeds when the crop JSON is preceded by a prose sentence with no fence", async () => {
+    testState.imageBehavior = "prose-prefixed-json";
+    const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+    expect(result.dishImage).not.toBeNull();
+    expect(result.dishImage).toMatchObject({ focalX: 0.5, focalY: 0.5 });
     expect(result.outcome).toBe("finalized");
   });
 });

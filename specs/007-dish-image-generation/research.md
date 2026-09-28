@@ -533,6 +533,11 @@ text with no image block at all, `response.content` not even an array —
 asserts graceful `dishImage: null`, matching every other image-failure
 mode).
 
+**Superseded by R10**: `stripMarkdownCodeFence()` handled the fence case
+specifically; R10 replaces it with a more general parser after the same
+model was observed dressing up the crop JSON a *third* way (no fence at
+all, just prose in front of it) that the fence-only strip didn't cover.
+
 ## R8. A second checkpoint-blob collision — this time between two SUCCESSFUL siblings, added post-deploy, from real usage
 
 **What was observed**: a real session ("Spicy Malaysian Belacan Prawn
@@ -651,3 +656,36 @@ a stale URL directly (rewriting a cached entry's `exp` query param to a
 past timestamp, the same shape a real 24h-old sign would have) and asserts
 the list still renders a real, loaded image after a reload — not the stale
 `src` still sitting in `localStorage` at first paint.
+
+## R10. A third crop-JSON dressing-up habit — prose with no fence at all, added post-deploy, from real usage
+
+**What was observed**: `google/gemini-2.5-flash-image` returned its crop
+text as `"Here's your photo-realistic image of the Enoki & Cod Tempura:\n
+{\"focalX\": 0.5, \"focalY\": 0.5}"` — a full prose sentence in front of the
+JSON, no markdown fence at all. R7's `stripMarkdownCodeFence()` only strips
+a fence; it left this text untouched, so `JSON.parse` threw on the leading
+`H` (`SyntaxError: Unexpected token 'H', "Here's you"... is not valid
+JSON`), same as R7's original failure mode — an image failure, not a stage
+failure (R2/R3 already guarantee that), but a silent one for anyone using
+this model.
+
+**Root cause**: same generic-LLM-habit shape as R7, just a different habit
+— models producing JSON alongside other requested content (here, an image)
+routinely narrate what they're doing in the accompanying text, regardless
+of the prompt asking for "a short line of plain JSON (nothing else)". R7's
+fence-only fix didn't anticipate a *non-fenced* dressing-up, so this is a
+new failure mode of the same underlying class, not a regression of R7's fix.
+
+**Fix**: replaced `stripMarkdownCodeFence()` with `parseCropJson()`, which
+tries, in order: (1) a plain parse of the trimmed text — the compliant
+case; (2) R7's fence-stripping, for a model that still does that; (3)
+extracting everything from the first `{` to the last `}` in the text and
+parsing that. Strategy 3 alone actually covers strategy 2 as well (the
+fence markers fall outside the braces either way), so a *fourth* dressing-up
+habit is unlikely to need a new case here — the brace-extraction is
+already the general fallback, not another special case bolted on.
+
+**Test coverage**: `tests/unit/finalize.test.ts` adds
+`"prose-prefixed-json"` (the exact production text, character for
+character) and asserts `dishImage` is produced correctly rather than
+`null`.

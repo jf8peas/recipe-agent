@@ -56,16 +56,40 @@ function parseDataUrl(url: string): { mime: string; bytes: Buffer } | null {
   return { mime, bytes: Buffer.from(base64, "base64") };
 }
 
-/** Strips a markdown code fence (` ```json ... ``` ` or plain ` ``` ... ``` `)
- * around the crop JSON, if present — observed in production:
- * `google/gemini-2.5-flash-image` reliably wraps its accompanying JSON text
- * in a fence even though `dishImagePrompt` never asks for one, the same
- * habit many chat models default to whenever asked to "reply with JSON".
- * Returns the input unchanged if it isn't fenced, so a model that already
- * complies with plain JSON isn't affected. */
-function stripMarkdownCodeFence(text: string): string {
-  const match = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/.exec(text.trim());
-  return match ? match[1]! : text;
+/** Parses the crop JSON out of the model's accompanying text, tolerating the
+ * ways real models have been observed to dress it up even though
+ * `dishImagePrompt` asks for "a short line of plain JSON (nothing else)":
+ * a markdown code fence around it, or — observed later, from
+ * `google/gemini-2.5-flash-image` — a full prose sentence in front of it
+ * ("Here's your photo-realistic image of the Enoki & Cod Tempura:\n{...}").
+ * Tries a plain parse first (the common, compliant case), then a fenced
+ * block, then falls back to extracting everything from the first `{` to the
+ * last `}` — which also covers the fenced case on its own (the fence
+ * markers fall outside the braces), so this last strategy alone is why a
+ * *new* future dressing-up habit is unlikely to need a third case here.
+ * Throws (like `JSON.parse` itself) if no strategy works — the caller
+ * already treats any crop-parse failure as an image failure, never a stage
+ * failure (research R2/R3). */
+function parseCropJson(text: string): unknown {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // fall through
+  }
+  const fenced = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/.exec(trimmed);
+  if (fenced) {
+    try {
+      return JSON.parse(fenced[1]!);
+    } catch {
+      // fall through to the brace-extraction below
+    }
+  }
+  const braces = /\{[\s\S]*\}/.exec(trimmed);
+  if (braces) {
+    return JSON.parse(braces[0]);
+  }
+  throw new SyntaxError(`No JSON object found in crop text: ${trimmed.slice(0, 300)}`);
 }
 
 async function tryGenerateDishImage(
@@ -134,7 +158,7 @@ async function tryGenerateDishImage(
 
     let crop: z.infer<typeof DishImageCropSchema>;
     try {
-      crop = DishImageCropSchema.parse(JSON.parse(stripMarkdownCodeFence(textBlock.text)));
+      crop = DishImageCropSchema.parse(parseCropJson(textBlock.text));
     } catch (cropErr) {
       // Logged with the raw text (unlike the generic catch below) so a
       // *new* format variation is diagnosable from the logs alone, the way

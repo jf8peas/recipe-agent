@@ -20,9 +20,23 @@ function readStored(): boolean {
  * event, since `storage` only fires in *other* tabs.
  */
 export function usePauseBetweenStages(): [boolean, (next: boolean) => void] {
-  const [value, setValue] = useState<boolean>(readStored);
+  // Initialized to the SSR-safe default (`readStored()` can't see
+  // `localStorage` on the server, so it always returns `true` there) rather
+  // than calling `readStored` as the lazy initializer directly — that
+  // seemed harmless since this is a `"use client"` component, but Next.js
+  // still server-renders it for the initial HTML, and nothing was ever
+  // correcting this value once real, client-side `localStorage` became
+  // available. A saved "off" (Auto-run) preference was silently discarded
+  // on every full page load/reload, always reverting to "on" — confirmed
+  // with a minimal repro (toggle off, reload, still shows checked) with no
+  // session or Auto-run involved at all. The mount effect below now
+  // explicitly re-reads and corrects it — a one-frame flash of the default
+  // is an acceptable, standard trade-off for a value that can only be known
+  // once actually running in the browser.
+  const [value, setValue] = useState<boolean>(true);
 
   useEffect(() => {
+    setValue(readStored());
     const onChange = () => setValue(readStored());
     window.addEventListener("recipe-agent:pause-changed", onChange);
     window.addEventListener("storage", onChange);

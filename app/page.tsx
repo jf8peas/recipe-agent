@@ -108,6 +108,14 @@ export default function HomePage() {
   // need to trigger a render, just survive until the next effect run.
   const sessionListRef = useRef<HTMLUListElement>(null);
   const focusListTopOnReturnRef = useRef(false);
+  // Respects an explicit Cancel/Pause during Auto-run — without this, the
+  // "pause between stages: off" auto-resume effect below would immediately
+  // restart the very run the user just stopped, since nothing about the
+  // underlying session state changed (still in-progress, still has a next
+  // stage, the toggle is still off). Cleared on an explicit Play click
+  // (resuming hands-off mode is exactly what that means) and whenever the
+  // active session itself changes (a fresh session's run isn't "stopped").
+  const userStoppedAutoRunRef = useRef(false);
   // Owned here (not self-managed by `AppHeader`) so the entry form's intro
   // can open About straight to its agent-graph section, not just the header.
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -213,6 +221,25 @@ export default function HomePage() {
     [advanceLock, step],
   );
   const autoRun = useAutoRun({ step: guardedStep });
+  // Wraps `autoRun.play`/`.pause` (and, below, `cancel`) so an explicit
+  // Pause/Cancel during Auto-run sticks — see `userStoppedAutoRunRef`'s own
+  // doc comment — while a manual Play click clears it, since resuming by
+  // hand is exactly what "go back to hands-off" means.
+  const guardedAutoRun = {
+    running: autoRun.running,
+    play: () => {
+      userStoppedAutoRunRef.current = false;
+      void autoRun.play();
+    },
+    pause: () => {
+      userStoppedAutoRunRef.current = true;
+      autoRun.pause();
+    },
+  };
+  function guardedCancel() {
+    userStoppedAutoRunRef.current = true;
+    cancel();
+  }
 
   const [editMode, setEditMode] = useState(false);
   const [patch, setPatch] = useState<Partial<Record<EditableField, unknown>>>({});
@@ -242,6 +269,49 @@ export default function HomePage() {
     Boolean(retryFromCheckpointId) &&
     snapshot?.state.outcome === "finalized" &&
     !displayedDishImageUrl;
+
+  // "Pause between stages: off" means fully hands-off — the run starts and
+  // keeps advancing on its own, with no Play click ever required, and that
+  // holds even across a reload mid-run. `autoRun.running` is the one piece
+  // of this feature that's never persisted (it's plain in-memory React
+  // state, by design — Auto-run is a client-side loop of single-step
+  // requests, never a server-side one), so without this, a reload during
+  // the longest stage (`finalize`, up to ~45-58s of sequential text-then-
+  // image generation — by far the likeliest point for an impatient refresh
+  // or a backgrounded mobile tab getting discarded) would correctly resume
+  // the *session* at the right checkpoint but silently drop the *running*
+  // loop, stranding the visitor on a manual "Play" button despite never
+  // having asked for manual stages. A genuine stage failure is deliberately
+  // excluded — auto-retrying a failing call unattended, repeatedly, isn't
+  // what this preference is for; that still needs an explicit Retry click.
+  useEffect(() => {
+    userStoppedAutoRunRef.current = false;
+  }, [snapshot?.sessionId]);
+
+  useEffect(() => {
+    if (pauseBetweenStages || autoRun.running || userStoppedAutoRunRef.current) return;
+    if (!snapshot || isViewingHistory || editMode || pendingSave) return;
+    if (loading || advanceLock.lockedElsewhere) return;
+    const outcome = displayedState?.outcome;
+    if (!outcome || outcome !== "in-progress" || displayedNext.length === 0) return;
+    void autoRun.play();
+    // `autoRun` is a fresh object literal every render (`useAutoRun`'s own
+    // return value, not memoized) — depending on `autoRun.running` (the
+    // actual primitive this effect cares about) instead avoids refiring on
+    // every unrelated render; `autoRun.play` itself is `useCallback`-stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    pauseBetweenStages,
+    autoRun.running,
+    snapshot,
+    isViewingHistory,
+    editMode,
+    pendingSave,
+    loading,
+    advanceLock.lockedElsewhere,
+    displayedState?.outcome,
+    displayedNext.length,
+  ]);
 
   const path = snapshot
     ? deriveRunPath(
@@ -651,7 +721,7 @@ export default function HomePage() {
                 loading={loading || advanceLock.lockedElsewhere}
                 error={error}
                 pauseBetweenStages={pauseBetweenStages}
-                autoRun={autoRun}
+                autoRun={guardedAutoRun}
                 editing={{
                   active: true,
                   canSave: Object.keys(patch).length > 0 && Object.keys(patchErrors).length === 0,
@@ -668,8 +738,8 @@ export default function HomePage() {
             ) : runningStage ? (
               <RunningStage
                 stageName={runningStage}
-                onCancel={cancel}
-                onPause={autoRun.running ? autoRun.pause : undefined}
+                onCancel={guardedCancel}
+                onPause={autoRun.running ? guardedAutoRun.pause : undefined}
               />
             ) : isStageFailure ? (
               <StageFailureBanner
@@ -686,7 +756,7 @@ export default function HomePage() {
                 loading={loading || advanceLock.lockedElsewhere}
                 error={error}
                 pauseBetweenStages={pauseBetweenStages}
-                autoRun={autoRun}
+                autoRun={guardedAutoRun}
                 editing={{
                   active: false,
                   canSave: false,

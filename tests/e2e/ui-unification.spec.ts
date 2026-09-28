@@ -50,20 +50,51 @@ test.describe("US1: one shared header, two states", () => {
     const toggle = page.getByRole("switch", { name: "Pause between stages" });
     await expect(toggle).toHaveAttribute("aria-checked", "true");
 
-    // Turn off "Pause between stages" so the toolbar offers "Play" (Auto-run)
-    // instead of a manual "Step" button.
+    // Turning off "Pause between stages" is itself the hands-off signal now
+    // — Auto-run starts on its own, no separate "Play" click needed.
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-checked", "false");
-
-    await page.getByRole("button", { name: "Play" }).click();
     await expect(toggle).toBeDisabled();
 
     // Runs unattended to a terminal outcome (the fake-model fixture resolves
     // every stage instantly) — the toggle must stay un-togglable the whole
-    // time, not just at the moment Play was clicked.
+    // time, not just at the moment the run started.
     await expect(page.getByRole("button", { name: "Start a new session" })).toBeVisible();
     await expect(toggle).toBeEnabled();
     await expect(toggle).toHaveAttribute("aria-checked", "false");
+  });
+
+  test("Auto-run resumes on its own after a reload, and respects an explicit Cancel instead of restarting", async ({
+    page,
+  }) => {
+    await startSession(page, ["2 eggs", "spinach"]);
+    const toggle = page.getByRole("switch", { name: "Pause between stages" });
+
+    // Artificially slow every /step call so there's a real window to reload
+    // mid-stage, the same pattern used for other busy-state tests.
+    await page.route("**/api/recipe/*/step", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      await route.continue();
+    });
+
+    await toggle.click(); // pause off — starts advancing on its own
+    await expect(page.locator('[role="status"]', { hasText: "Running" })).toBeVisible();
+
+    // Reloading mid-stage drops the in-memory "is Auto-run running" state,
+    // but not the "pause between stages: off" preference (localStorage) —
+    // the run must pick back up on its own, not strand the user on Play.
+    await page.reload();
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect(page.locator('[role="status"]', { hasText: "Running" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Play" })).toHaveCount(0);
+
+    // An explicit Cancel must stick — it must not be immediately undone by
+    // the same auto-resume mechanism that just proved itself above.
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+    await page.waitForTimeout(1000);
+    await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+    await expect(page.locator('[role="status"]', { hasText: "Running" })).toHaveCount(0);
   });
 
   test("header has no a11y violations, light or dark", async ({ page }) => {

@@ -476,6 +476,78 @@ committing to full visual design now (RECOMMENDATION §7 says wait).
 
 ---
 
+## R16 — Auto-run stranding on reload, and a pause-preference hydration bug — added post-deploy, from real usage
+
+**What was observed**: with "Pause between stages" off, a run advanced
+through stages on its own but consistently stalled right before `finalize`,
+leaving a manual "Play" button that had to be clicked to actually finish.
+It wasn't a deliberate gate on `finalize` — there is none; `useAutoRun.ts`'s
+stopping conditions are only a terminal `outcome`, a missing result, or an
+explicit user Pause/Cancel.
+
+**Root cause**: `useAutoRun`'s own `running` flag is deliberately
+in-memory-only (Auto-run is a client-side loop of single-`/step` requests,
+never a server-side one — constitution Principle III's own framing), but
+nothing ever restarted that loop after it was lost. `finalize` is by far the
+longest stage (sequential text-then-image generation, up to ~45-58s), making
+it the single likeliest point for a reload to land — an impatient manual
+refresh, or a backgrounded mobile tab getting discarded and reloaded fresh
+on return. The *session* always resumed correctly at the right checkpoint;
+only the *intent to keep advancing* was lost.
+
+**A second, independent bug found while fixing the first**: reproducing
+this surfaced that the "pause between stages" *preference itself* didn't
+survive a reload either, in the simplest possible repro (toggle off,
+reload, no session, no Auto-run involved at all) — `usePauseBetweenStages`
+passed `readStored` directly as `useState`'s lazy initializer, which
+returns `true` when `window` is undefined. Next.js still server-renders a
+`"use client"` page for its initial HTML, so every reload's *server* pass
+computed `true`, and nothing ever corrected it back to the real,
+client-only `localStorage` value afterward — the existing mount effect only
+wired up event listeners for *future* changes. A saved "off" preference was
+silently discarded on every full page load, always reverting to "on."
+Without fixing this too, the Auto-run fix below would never have fired
+after a real reload, since `pauseBetweenStages` would incorrectly read back
+as `true`.
+
+**Fix, part 1 (`hooks/usePauseBetweenStages.ts`)**: initialize state to the
+SSR-safe default and correct it via `setValue(readStored())` inside the
+existing mount effect — a one-frame flash of the default on load, the
+standard trade-off for a value only knowable in the browser.
+
+**Fix, part 2 (`app/page.tsx`)**: "Pause between stages: off" now means
+fully hands-off, resolved by a scoped clarification with the user — the run
+starts and keeps advancing with no Play click ever needed, and that holds
+across a reload mid-run, not just a fresh start. A new effect calls
+`autoRun.play()` whenever the toggle is off, no run is already active, the
+session is genuinely mid-run (`outcome === "in-progress"`, a `next` stage
+exists), and nothing else is blocking it (viewing history, mid-edit, a
+pending unsaved save, another tab holding the advance lock). A stage
+*failure* is deliberately excluded from auto-resume — silently retrying a
+failing model call on a loop isn't what this preference is for; that still
+needs an explicit Retry click.
+
+**The one thing that needed real care**: an explicit Cancel or Pause during
+an active run must stick, not be immediately undone by the same effect that
+just proved it works. A `userStoppedAutoRunRef` (plain ref, not state — it
+shouldn't itself trigger a render) is set whenever the user explicitly
+pauses or cancels, checked as an extra guard by the auto-resume effect, and
+cleared either by an explicit Play click (resuming hands-off is exactly
+what that means) or by switching to a different/new session (a fresh
+session's run was never "stopped"). `ActionToolbar`/`RunningStage` call
+Auto-run's `play`/`pause` and `cancel` through small wrappers in
+`app/page.tsx` that set/clear this flag, rather than the raw hook functions
+directly.
+
+**Test coverage**: `tests/e2e/ui-unification.spec.ts` covers both the
+resume-after-reload case (artificially slows `/step`, reloads mid-stage,
+asserts the run is still visibly advancing with no "Play" button present)
+and the respected-Cancel case (an explicit Cancel during that same run
+leaves a "Play" button that stays put, not one that's immediately replaced
+by the run restarting itself).
+
+---
+
 ## Resolved unknowns summary
 
 | Unknown | Resolution |
@@ -495,5 +567,6 @@ committing to full visual design now (RECOMMENDATION §7 says wait).
 | Purge | R13 — Vercel cron → guarded route |
 | Testing | R14 — Vitest + Playwright + axe, fake model |
 | Design tokens | R15 — single `tokens.css`, Claude Design after slice |
+| Auto-run stranding on reload | R16 — persist-and-resume the running intent, plus a pause-preference hydration fix |
 
 No open **NEEDS CLARIFICATION** remain.

@@ -332,3 +332,55 @@ completing in ~32s total, well inside the 60s ceiling.
   uses for the exact same action (`ActionToolbar`/`StageFailureBanner`).
   `app/page.tsx` now renders it via `<Button variant="secondary">`, matching
   everywhere else.
+- **A third crop-JSON dressing-up habit from `google/gemini-2.5-flash-image`**
+  (research.md R10): after R7's markdown-fence fix, the model was observed
+  prefacing the crop JSON with a full prose sentence and no fence at all
+  ("Here's your photo-realistic image of the Enoki & Cod Tempura:\n{...}"),
+  which the fence-only strip didn't touch — same silent image-failure
+  symptom as R7, just a different dressing-up habit. Replaced
+  `stripMarkdownCodeFence()` with a more general `parseCropJson()` in
+  `finalize.ts`: plain parse first, then fence-stripping, then a fallback
+  that extracts everything from the first `{` to the last `}` — which
+  covers the fence case too, so this is meant to be the last case ever
+  needed here rather than a third special-cased fix.
+- Investigated two more model-reliability reports the same way as the
+  original `MODEL_DEFAULT`/deepseek finding: `MODEL_CRITIQUE` was set to
+  `deepseek/deepseek-v4-pro`, which OpenRouter serves through 14 different
+  third-party hosts (same unreliable-marketplace pattern as
+  `deepseek-v4-flash`) — likely cause of a `critique`-stage timeout.
+  Recommended `anthropic/claude-haiku-4.5` (same reasoning-model family the
+  constitution's own `MODELS.critique` fallback, `claude-sonnet-5`, already
+  uses — a deliberate choice for this specific stage, which the constitution
+  specs as needing "a stronger model" — rather than jumping to an unrelated
+  vendor's lightest tier) — cheaper and faster than the fallback, still on
+  first-party/enterprise hosting (Azure, Bedrock, Google, Anthropic direct).
+  Separately confirmed a *different* timeout (on `finalize`, `MODEL_DEFAULT`
+  already switched to `gpt-6-luna`) recorded cleanly as a plain
+  stage-failure with no corruption — the fix from the first production
+  data-loss incident held up under a real subsequent timeout, not just in
+  tests. Not yet resolved: whether that `finalize` timeout was just latency
+  variance (retry and it'll likely succeed) or something new — the user is
+  re-testing.
+- **Auto-run stranding on reload, plus an independent pause-preference
+  hydration bug** (specs/001-recipe-agent/research.md R16): with "Pause
+  between stages" off, a run would consistently stall right before
+  `finalize` (by far the longest stage) needing a manual "Play" click to
+  finish — no deliberate gate exists on `finalize`; `useAutoRun.ts`'s own
+  `running` flag is just plain in-memory state, and nothing ever restarted
+  the loop after a reload dropped it (most likely an impatient refresh or a
+  backgrounded mobile tab reloading fresh) while the session itself resumed
+  fine. Reproducing it surfaced a **second, independent bug**:
+  `usePauseBetweenStages` read `localStorage` directly as `useState`'s lazy
+  initializer, which always returns `true` under Next.js's server-render
+  pass of this `"use client"` page (`window` is undefined there) — nothing
+  ever corrected it afterward, so a saved "off" preference was silently
+  discarded on *every* reload, confirmed with a minimal repro (toggle off,
+  reload, no session involved at all). Fixed both: the hook now corrects
+  itself via `setValue(readStored())` in its existing mount effect, and
+  (per a scoped user clarification) "off" now means fully hands-off —
+  `app/page.tsx` has a new effect that calls `autoRun.play()` whenever the
+  toggle is off, nothing is already running, and the session is genuinely
+  mid-run, so it starts *and resumes* on its own with zero Play clicks
+  ever needed. An explicit Cancel/Pause is respected via a
+  `userStoppedAutoRunRef` guard (cleared by an explicit Play or a
+  session change) so it can't immediately undo itself.
