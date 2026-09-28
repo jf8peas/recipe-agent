@@ -499,6 +499,18 @@ export default function HomePage() {
     setView("entry");
   }
 
+  /** `ActionToolbar`'s "Start a new session" (shown once a run is finished)
+   * — unlike `handleStartNewSession` above, this fires with a session still
+   * active, so it must also `reset()` it. `view` is otherwise left exactly
+   * as it was before this session was opened: if that session was opened
+   * from the list, `view` is still "list", so without this explicit
+   * `setView("entry")` the reset would correctly clear the session but land
+   * back on the list instead of the entry form. */
+  function handleStartNewSessionFromRun() {
+    reset();
+    setView("entry");
+  }
+
   /** Abandons whatever session is active (still resumable later from the
    * list — `reset()` only clears this device's "current session" pointer,
    * nothing server-side) and lands on the session list, regardless of
@@ -730,7 +742,7 @@ export default function HomePage() {
                   onCancel: cancelEdit,
                 }}
                 onStep={() => guardedStep("step")}
-                onNewSession={reset}
+                onNewSession={handleStartNewSessionFromRun}
                 onExit={handleExitToSessions}
               />
             ) : pendingSave ? (
@@ -765,7 +777,7 @@ export default function HomePage() {
                   onCancel: cancelEdit,
                 }}
                 onStep={() => guardedStep("step")}
-                onNewSession={reset}
+                onNewSession={handleStartNewSessionFromRun}
                 onExit={handleExitToSessions}
               />
             )}

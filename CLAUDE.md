@@ -464,3 +464,32 @@ completing in ~32s total, well inside the 60s ceiling.
   the old Sydney project was only ever read from, never written to, so it
   remains as an untouched fallback. Confirmed fixed against the live
   deploy: the user reported the same class of `/fork` edit "super fast now."
+- **A finalized recipe reopened from the session list, then "Start a new
+  session," landed back on the list instead of the entry form**:
+  `ActionToolbar`'s "Start a new session" (shown once a run finishes) was
+  wired straight to `reset()`, which clears the active session but never
+  touches `app/page.tsx`'s own `view` state that picks between the session
+  list and the entry form. A session started fresh from the entry form
+  already had `view === "entry"`, so this looked fine — the bug only showed
+  for a session *reopened from the list* (`handleOpenSession` never touches
+  `view` either, so it stays `"list"` from before), where clicking "Start a
+  new session" correctly cleared the session but left `view` at `"list"`,
+  showing the session list again. Fixed with a new
+  `handleStartNewSessionFromRun` (`reset()` then `setView("entry")`), used
+  at both `ActionToolbar` call sites instead of passing `reset` directly.
+  New e2e regression test reopens a finalized session from the list
+  specifically (not straight-through start -> finalize, which never
+  exercises the `view` state this bug depends on) before clicking "Start a
+  new session."
+- **Known intermittent flake, not yet root-caused**: `ui-unification.spec.ts`'s
+  "clicking the draftRecipe/refine node selects the newest draft tab" has
+  failed twice now when run as part of the full `--project=chromium` suite
+  (each time alongside an unrelated code change elsewhere — the agent-graph
+  cursor fix once, the "Start a new session" view-state fix above once), but
+  has passed every time it's been re-run in isolation (`-g` filter)
+  immediately after. Not yet investigated further — likely some
+  full-suite-only timing/ordering sensitivity (`workers: 1` means tests
+  share a browser process sequentially), but unconfirmed. If it recurs,
+  worth checking whether it's specifically adjacent-test state bleed (e.g. a
+  previous test's `critique`/`refine` cycle count or fake-model queue state)
+  rather than pure timing.

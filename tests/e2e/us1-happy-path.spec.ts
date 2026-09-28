@@ -61,6 +61,37 @@ test("US1 happy path: start -> step through all stages -> finalized recipe", asy
   await expect(page.getByRole("heading", { name: "Final recipe" })).toBeVisible();
 });
 
+// Regression: `ActionToolbar`'s "Start a new session" (shown once a run
+// finishes) used to just call `reset()`, which clears the active session but
+// never touches `view` — a session started fresh from the entry form left
+// `view` at "entry" already, so this bug only showed up for a session
+// *reopened from the list*, where `view` was still "list" from before.
+// Clicking "Start a new session" there correctly cleared the session but
+// incorrectly landed back on the list instead of the entry form.
+test("US1: \"Start a new session\" from a finalized recipe reopened from the list goes to the entry form, not back to the list", async ({
+  page,
+}) => {
+  await startSession(page, ["2 eggs", "spinach"]);
+  while (await page.getByRole("button", { name: /^Step \(/ }).isVisible()) {
+    await clickStep(page);
+  }
+  await expect(page.getByRole("button", { name: "Start a new session" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Back to your sessions" }).click();
+  await expect(page.getByRole("heading", { name: "Your sessions" })).toBeVisible();
+
+  // Reopen the session just left (touch() puts it at the top row) instead of
+  // going straight from Start -> finalize -> "Start a new session", which
+  // never exercises the "view" state this bug actually depends on.
+  const topRowOpenButton = page.locator("li").nth(0).getByRole("button").first();
+  await topRowOpenButton.click();
+  await expect(page.getByRole("heading", { name: "Final recipe" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Start a new session" }).click();
+  await expect(page.getByLabel("Ingredients (one per line)")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your sessions" })).toHaveCount(0);
+});
+
 test("US1: returning to the session list via \"Back to your sessions\" focuses the top row — the session just left, which the list always reorders to the front", async ({
   page,
 }) => {
