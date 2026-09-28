@@ -129,6 +129,31 @@ test("US3: renders from 320px through 1920px, the agent graph always fitting wit
   await expect(dialog.locator("table.about-responsive-table thead").first()).toBeHidden();
   await expect(dialog.getByRole("cell", { name: "Stage parseIngredients" })).toBeVisible();
 
+  // The `branches` data-model card's longest field ("forked_from_checkpoint_id")
+  // has no natural break point — confirm it wraps inside the card's own
+  // border instead of overflowing past it. The grid only forces a card down
+  // to its `minmax(200px, ...)` floor at a specific mid-range viewport width
+  // (not 320px, where it collapses to one full-width column, and not wide
+  // desktop widths, where columns grow well past the floor) — rather than
+  // pick a fragile magic viewport to hit that width by chance, force the
+  // card to its actual grid-minimum width directly and check there, which is
+  // what the bug depends on either way. A bounding-box comparison against
+  // the card can't detect this: `getBoundingClientRect()` reports the
+  // field's own laid-out box, not the unwrapped text painted past it
+  // (`overflow: visible` never grows the box itself) — `scrollWidth` vs
+  // `clientWidth` on the field element is what actually reveals unwrapped
+  // overflow.
+  await dialog.locator("#data-model").scrollIntoViewIfNeeded();
+  await assertNoPageOverflow();
+  const branchesCard = dialog.getByTestId("data-model-table-branches");
+  await branchesCard.evaluate((el) => {
+    (el as HTMLElement).style.width = "200px";
+  });
+  const fieldOverflows = await dialog
+    .getByText("forked_from_checkpoint_id")
+    .evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+  expect(fieldOverflows).toBe(false);
+
   await dialog.locator("#closing").scrollIntoViewIfNeeded();
   await assertNoPageOverflow();
 

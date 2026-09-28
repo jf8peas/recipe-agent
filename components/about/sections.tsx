@@ -9,8 +9,7 @@ import {
   ARCHITECTURE_NOTES,
   AUTHOR_BIO,
   AUTHOR_LINKEDIN_URL,
-  TESTER_BIO,
-  TESTER_LINKEDIN_URL,
+  TESTERS,
   BRANCHING_CALLOUTS,
   BRANCHING_INTRO,
   BRANCHING_STEPS,
@@ -110,11 +109,17 @@ export function AuthorSection() {
 
       <div style={{ ...cardStyle(), marginTop: "var(--space-6)" }}>
         <p style={kickerStyle}>Who&apos;s testing it</p>
-        <h3 style={h3Style}>Alesja Tanabe</h3>
-        <p style={bodyTextStyle}>{TESTER_BIO}</p>
-        <a href={TESTER_LINKEDIN_URL} target="_blank" rel="noopener noreferrer" style={pillLinkStyle}>
-          View LinkedIn profile →
-        </a>
+        <div style={gridStyle(240)}>
+          {TESTERS.map((t) => (
+            <div key={t.name}>
+              <h3 style={h3Style}>{t.name}</h3>
+              <p style={bodyTextStyle}>{t.bio}</p>
+              <a href={t.linkedinUrl} target="_blank" rel="noopener noreferrer" style={pillLinkStyle}>
+                View LinkedIn profile →
+              </a>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -475,7 +480,7 @@ export function DataModelSection() {
       <h2 style={h2Style}>Three small tables that track sessions, branch lineage, and usage limits</h2>
       <div style={gridStyle(200)}>
         {DATA_MODEL_TABLES.map((t) => (
-          <div key={t.name} style={cardStyle()}>
+          <div key={t.name} data-testid={`data-model-table-${t.name}`} style={cardStyle()}>
             <h3 style={{ ...h3Style, color: "var(--color-accent)" }}>{t.name}</h3>
             <ul style={{ ...plainListStyle, margin: "var(--space-2) 0" }}>
               {t.fields.map((f) => (
@@ -617,12 +622,17 @@ export function ClosingSection() {
             View LinkedIn profile →
           </a>
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-3)" }}>
-          <p style={{ fontWeight: 600, color: "inherit", margin: 0 }}>Tested by Alesja Tanabe</p>
-          <a href={TESTER_LINKEDIN_URL} target="_blank" rel="noopener noreferrer" style={pillLinkStyle}>
-            View LinkedIn profile →
-          </a>
-        </div>
+        {TESTERS.map((t) => (
+          <div
+            key={t.name}
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-3)" }}
+          >
+            <p style={{ fontWeight: 600, color: "inherit", margin: 0 }}>Tested by {t.name}</p>
+            <a href={t.linkedinUrl} target="_blank" rel="noopener noreferrer" style={pillLinkStyle}>
+              View LinkedIn profile →
+            </a>
+          </div>
+        ))}
       </div>
     </section>
   );

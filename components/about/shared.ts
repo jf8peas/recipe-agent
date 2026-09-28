@@ -158,6 +158,11 @@ export const plainListItemStyle: CSSProperties = {
   fontFamily: "var(--font-mono)",
   fontSize: "var(--text-sm)",
   color: "var(--color-text-muted)",
+  // Same fix as `tableCellStyle`'s own: a long identifier like
+  // "forked_from_checkpoint_id" has no natural break point, so without
+  // this it overflows past the card's border instead of wrapping.
+  overflowWrap: "break-word",
+  wordBreak: "break-word",
 };
 
 export const bodyTextStyle: CSSProperties = {

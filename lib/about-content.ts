@@ -9,7 +9,6 @@ import type { TimelineStage } from "./tree";
  */
 
 export const AUTHOR_LINKEDIN_URL = "https://www.linkedin.com/in/john-fong-04b7a120/";
-export const TESTER_LINKEDIN_URL = "https://www.linkedin.com/in/alesja-tanabe-3207931b1";
 
 // ---- Cover (FR-007) ----
 
@@ -23,8 +22,24 @@ export const COVER_LEDE =
 export const AUTHOR_BIO =
   "John Fong is an on-the-tools business analyst who builds full-stack data products end to end. Recipe Agent is a personal project exploring how to use LangGraph to orchestrate an agentic process with full time-travel over an AI system's state history.";
 
-export const TESTER_BIO =
-  "Alesja Tanabe is a Senior QA Engineer in Playtech's Videobet unit with nearly 5 years of experience in gaming software quality. She specializes in black-box testing for physical gaming machines, evaluating platform reliability, edge cases, and overall player experience on Playtech's proprietary gaming platform.";
+export interface Tester {
+  name: string;
+  bio: string;
+  linkedinUrl: string;
+}
+
+export const TESTERS: Tester[] = [
+  {
+    name: "Alesja Tanabe",
+    bio: "Alesja Tanabe is a Senior QA Engineer in Playtech's Videobet unit with nearly 5 years of experience in gaming software quality. She specializes in black-box testing for physical gaming machines, evaluating platform reliability, edge cases, and overall player experience on Playtech's proprietary gaming platform.",
+    linkedinUrl: "https://www.linkedin.com/in/alesja-tanabe-3207931b1",
+  },
+  {
+    name: "Sofia Ostretsova",
+    bio: "Sofia Ostretsova is a highly talented QA Engineer in Playtech's Videobet unit with nearly 5 years of experience in the gaming hardware and software space. Recognized for her deep technical aptitude, she focuses on black-box testing and complex system validation on Playtech's proprietary gaming platform.",
+    linkedinUrl: "https://www.linkedin.com/in/ostretsovasofia",
+  },
+];
 
 // ---- Entry-form intro (the first thing a new visitor sees on `/`) ----
 
