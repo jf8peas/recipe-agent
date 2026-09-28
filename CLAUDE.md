@@ -424,3 +424,14 @@ completing in ~32s total, well inside the 60s ceiling.
   thumbnail updates, `buildTimeline`, plus logging `forkReplay`'s own catch
   block, previously silent) so a recurrence actually pinpoints the slow
   operation instead of just reporting the platform-level timeout again.
+  **Confirmed by that very logging, on the next occurrence**: the route's
+  own markers showed `forkReplay` itself took 59.6s of the 60s budget — on
+  an edit to `directions` (a 1-2 `updateState`-call replay at most, this
+  early in the graph). Since `forkReplay` makes no model calls at all, this
+  points at something hanging inside the checkpoint-replay/DB layer itself,
+  not an algorithmic cost. Added a second, finer-grained layer of timing
+  directly inside `lib/fork-replay.ts` — the `getStateHistory` read of the
+  source thread, and each individual `updateState` call in the replay
+  chain, each with its own elapsed-ms marker — to find out which *specific*
+  one of those few operations is the one that stalls. Not yet resolved;
+  waiting on the next occurrence's logs with this new detail.

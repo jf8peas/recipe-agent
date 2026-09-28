@@ -31,6 +31,13 @@ export async function forkReplay(
   params: ForkReplayParams,
 ): Promise<ForkReplayResult> {
   const { sourceThreadId, checkpointId, newThreadId, patch } = params;
+  // Fine-grained timing (research: app/api/recipe/[sid]/fork/route.ts's own
+  // logging narrowed a real 60s production timeout down to "somewhere
+  // inside forkReplay", but this function is doing no model calls at all
+  // (pure checkpoint replay) — these markers exist to find out WHICH of its
+  // several DB operations (the source thread's history read, or one
+  // specific `updateState` call in the replay chain) is the one that hangs.
+  const startedAt = Date.now();
 
   const rawHistory: { values: State; next: string[]; checkpointId: string; source: string }[] = [];
   for await (const snapshot of app.getStateHistory({
@@ -44,6 +51,9 @@ export async function forkReplay(
     });
   }
   rawHistory.reverse(); // oldest-first
+  console.log(
+    `[forkReplay] getStateHistory read (${rawHistory.length} checkpoints) done at ${Date.now() - startedAt}ms`,
+  );
 
   // Drop LangGraph's own pre-"__start__" scaffolding checkpoint (source
   // "input") the same way lib/history.ts does — without this, it shifts
@@ -65,6 +75,7 @@ export async function forkReplay(
     // e.g. correcting `ingredients` after an ingredient-error. No prior
     // stages to replay; seed the fresh thread directly with the patch.
     const tip = await app.updateState(newConfig, { ...history[0]!.values, ...patch }, START);
+    console.log(`[forkReplay] genesis-only updateState done at ${Date.now() - startedAt}ms`);
     return finalStateOf(app, tip);
   }
 
@@ -73,16 +84,27 @@ export async function forkReplay(
   // `next` named (there is no `next`-independent "producing stage" field on
   // a StateSnapshot in this LangGraph version).
   let tip = await app.updateState(newConfig, history[0]!.values, START);
+  console.log(`[forkReplay] updateState(START) done at ${Date.now() - startedAt}ms`);
   for (let i = 1; i < cutoff; i += 1) {
     const stageName = history[i - 1]!.next[0]!;
+    const stepStartedAt = Date.now();
     tip = await app.updateState(tip, history[i]!.values, stageName);
+    console.log(
+      `[forkReplay] updateState(${stageName}) [${i}/${cutoff - 1}] took ${Date.now() - stepStartedAt}ms, ` +
+        `total ${Date.now() - startedAt}ms`,
+    );
   }
 
   // Final step: the fork-point checkpoint's own recorded values, patched —
   // attributed to the same stage that originally produced it, so the new
   // thread's tip ends up with `next` computed from the (now edited) state.
   const finalStageName = history[cutoff - 1]!.next[0]!;
+  const finalStepStartedAt = Date.now();
   tip = await app.updateState(tip, { ...history[cutoff]!.values, ...patch }, finalStageName);
+  console.log(
+    `[forkReplay] final patched updateState(${finalStageName}) took ${Date.now() - finalStepStartedAt}ms, ` +
+      `total ${Date.now() - startedAt}ms`,
+  );
 
   return finalStateOf(app, tip);
 }
