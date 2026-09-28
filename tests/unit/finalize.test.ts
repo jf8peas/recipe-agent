@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // asserting call order and captured timing, both mutated from inside these
 // mocks).
 const testState = vi.hoisted(() => ({
+  // A committed, valid, tiny 1x1 PNG — `finalize.ts` now runs every image
+  // through `sharp()` before storing it (resize + re-encode to WebP, to
+  // stop shipping ~1.5MB PNGs for a thumbnail), so a "success" fixture has
+  // to be real, decodable image bytes, not a placeholder string — `sharp`
+  // throws on garbage input, which this file's own outer catch would (per
+  // its own design) quietly turn into a "success" test wrongly seeing
+  // `dishImage: null`.
+  realTinyPngBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   callOrder: [] as string[],
   capturedImageTimeoutMs: undefined as number | undefined,
   capturedTextTimeoutMs: undefined as number | undefined,
@@ -90,7 +98,7 @@ vi.mock("../../lib/agent/models", async (importOriginal) => {
               return {
                 content: [
                   { type: "text", text: "```json\n" + JSON.stringify({ focalX: 0.5, focalY: 0.5, zoom: 1.2 }) + "\n```" },
-                  { type: "image", url: "data:image/png;base64,AAAA" },
+                  { type: "image", url: `data:image/png;base64,${testState.realTinyPngBase64}` },
                 ],
               };
             }
@@ -112,14 +120,14 @@ vi.mock("../../lib/agent/models", async (importOriginal) => {
                     type: "text",
                     text: `Here's your photo-realistic image of the Enoki & Cod Tempura:\n${JSON.stringify({ focalX: 0.5, focalY: 0.5 })}`,
                   },
-                  { type: "image", url: "data:image/png;base64,AAAA" },
+                  { type: "image", url: `data:image/png;base64,${testState.realTinyPngBase64}` },
                 ],
               };
             }
             return {
               content: [
                 { type: "text", text: JSON.stringify({ focalX: 0.5, focalY: 0.5 }) },
-                { type: "image", url: "data:image/png;base64,AAAA" },
+                { type: "image", url: `data:image/png;base64,${testState.realTinyPngBase64}` },
               ],
             };
           },
@@ -149,6 +157,7 @@ vi.mock("../../lib/agent/models", async (importOriginal) => {
 
 import { finalize, SAFETY_MARGIN_MS, MIN_IMAGE_BUDGET_MS, TEXT_DEADLINE_MS } from "../../lib/agent/nodes/finalize";
 import { INITIAL_STATE } from "../../lib/agent/state";
+import { insertImage } from "../../lib/db/images";
 
 const MAX_DURATION_MS = 60_000; // matches every route's own `maxDuration = 60`
 
@@ -318,5 +327,25 @@ describe("finalize", () => {
     expect(result.dishImage).not.toBeNull();
     expect(result.dishImage).toMatchObject({ focalX: 0.5, focalY: 0.5 });
     expect(result.outcome).toBe("finalized");
+  });
+
+  // The model was observed returning 1024x1024 lossless PNGs, 1.4-1.9MB
+  // each — the same file served for both the final-recipe-tab photo and
+  // every session-list thumbnail, making both slow to load. The stored
+  // image is now always re-encoded to WebP (regardless of what format the
+  // model itself returned), which compresses photographic content far
+  // better than PNG at no visible quality loss.
+  it("stores the image re-encoded to WebP, not whatever format the model returned", async () => {
+    const result = await finalize(INITIAL_STATE, { configurable: { thread_id: "t1" } });
+    expect(result.dishImage).not.toBeNull();
+    expect(insertImage).toHaveBeenCalledWith(
+      expect.objectContaining({ mime: "image/webp", threadId: "t1" }),
+    );
+    // Real re-encoded bytes, not just the mocked 1x1 fixture's own base64
+    // passed straight through — confirms `sharp()` actually ran rather than
+    // silently failing/short-circuiting somewhere.
+    const call = vi.mocked(insertImage).mock.calls[0]?.[0];
+    expect(Buffer.isBuffer(call?.bytes)).toBe(true);
+    expect(call?.bytes.length).toBeGreaterThan(0);
   });
 });

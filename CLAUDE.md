@@ -384,3 +384,26 @@ completing in ~32s total, well inside the 60s ceiling.
   ever needed. An explicit Cancel/Pause is respected via a
   `userStoppedAutoRunRef` guard (cleared by an explicit Play or a
   session change) so it can't immediately undo itself.
+- **Slow image downloads, and the "no `sharp`" constraint revisited**
+  (specs/007-dish-image-generation/research.md R11): direct inspection
+  found every dish photo was a 1024x1024, lossless PNG, 1.4-1.9MB — and the
+  *same* full file was served for both the final-recipe-tab photo and every
+  session-list thumbnail (the thumbnail is a CSS crop applied at display
+  time, per spec, never a separate stored file). Feature 007's plan had
+  deliberately excluded any image-processing library to keep scope small,
+  before this was a measured problem. Revisited with the user, who approved
+  adding `sharp` now that the cost is real: `lib/agent/nodes/finalize.ts`
+  now resizes to fit within 1024x1024 and re-encodes to WebP (quality 80)
+  before storing — typically an 80-95% size cut for photographic content
+  with no visible quality loss, no architecture change otherwise (same
+  table, same signed-URL route, same schema). Backfill added right after,
+  once asked for: `scripts/backfill-image-webp.ts` (`npm run
+  backfill:image-webp`) re-encodes every already-stored non-WebP row in
+  place using the same exported constants, touching only `bytes`/`mime` —
+  `image_id` never changes, so every checkpoint's `dishImage.imageId` and
+  `sessions.thumbnail_image_id` keep working unmodified. Idempotent, and a
+  single corrupt/undecodable row is logged and skipped rather than failing
+  the whole run. Still not addressed: signed URLs get freshly re-minted on
+  every `/mine`/`/state` call even for the same image, defeating the
+  existing 24h browser cache on repeat views — a separate, smaller
+  optimization out of scope for this pass.

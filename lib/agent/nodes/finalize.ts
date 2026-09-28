@@ -1,4 +1,5 @@
 import { z } from "zod";
+import sharp from "sharp";
 import type { LangGraphRunnableConfig } from "@langchain/langgraph";
 import type { ChatCompletionModality } from "openai/resources/chat/completions";
 import { insertImage } from "../../db/images";
@@ -47,6 +48,23 @@ export const MIN_IMAGE_BUDGET_MS = 5000;
 // tests/docs, since it's the nominal ceiling `requestDeadline(config,
 // SAFETY_MARGIN_MS)` shrinks from elapsed time.)
 export const TEXT_DEADLINE_MS = MAX_DURATION_MS - SAFETY_MARGIN_MS;
+
+// The image model was observed returning 1024x1024 lossless PNGs, 1.4-1.9MB
+// each — the same full file served for both the final-recipe-tab photo and
+// every session-list thumbnail (the "thumbnail" is a CSS crop of the full
+// image, applied at display time, never a separate stored file — spec's own
+// "not a separate generated image" requirement). That made both slow to
+// load, especially the list (several thumbnails downloading in parallel).
+// Re-encoding to WebP cuts this dramatically for photographic content with
+// no visible quality loss (typically 80-95% smaller than the equivalent
+// PNG); the dimension cap is a light safety net, not the main lever — 1024
+// is already a reasonable upper bound for this app's own 720px-max-width
+// display, so this rarely actually downscales anything.
+// Exported so `scripts/backfill-image-webp.ts` re-encodes already-stored
+// images with the exact same settings, rather than risking drift from a
+// second, separately-picked pair of numbers.
+export const IMAGE_MAX_DIMENSION_PX = 1024;
+export const IMAGE_WEBP_QUALITY = 80;
 
 function parseDataUrl(url: string): { mime: string; bytes: Buffer } | null {
   const match = /^data:([^;]+);base64,(.+)$/.exec(url);
@@ -174,10 +192,21 @@ async function tryGenerateDishImage(
       return null;
     }
 
-    const imageId = mintImageId();
-    await insertImage({ imageId, threadId, bytes: parsed.bytes, mime: parsed.mime });
+    // Re-encoded regardless of the model's own output format — a resize/
+    // re-encode failure (corrupt bytes, an unrecognized format) is just
+    // another image failure, caught by this function's own outer catch,
+    // same as any other (research R2/R3): never a stage failure.
+    const optimized = await sharp(parsed.bytes)
+      .resize(IMAGE_MAX_DIMENSION_PX, IMAGE_MAX_DIMENSION_PX, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: IMAGE_WEBP_QUALITY })
+      .toBuffer();
 
-    console.log(`[finalize] image call succeeded: imageId=${imageId} bytes=${parsed.bytes.length}`);
+    const imageId = mintImageId();
+    await insertImage({ imageId, threadId, bytes: optimized, mime: "image/webp" });
+
+    console.log(
+      `[finalize] image call succeeded: imageId=${imageId} bytes=${optimized.length} (was ${parsed.bytes.length} as ${parsed.mime})`,
+    );
 
     return DishImageSchema.parse({
       imageId,

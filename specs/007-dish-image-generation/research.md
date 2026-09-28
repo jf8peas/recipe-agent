@@ -425,6 +425,10 @@ real output:
   regardless, store PNG as given — no image-processing library is being
   added (Hard Constraint: no `sharp`) to re-encode it, so the format is
   whatever the model hands back, unmodified.
+  **Superseded by R11**: real usage confirmed the "0.5-2MB" estimate landed
+  at the high end (1.4-1.9MB, 1024x1024 PNGs) and was genuinely slow to
+  load — the "no `sharp`" constraint was revisited with the user once that
+  became a real, measured problem rather than a hypothetical one.
 - **Storage impact at current caps**: `DAILY_STAGES_GLOBAL` defaults to
   `2000`. Worst case (every stage were a `finalize` producing an image, which
   it structurally can't be — `finalize` is one specific stage among seven),
@@ -689,3 +693,72 @@ already the general fallback, not another special case bolted on.
 `"prose-prefixed-json"` (the exact production text, character for
 character) and asserts `dishImage` is produced correctly rather than
 `null`.
+
+## R11. Slow image downloads — the "no `sharp`" constraint revisited, added post-deploy, from real usage
+
+**What was observed**: images were slow to load, most noticeably on the
+session list (several thumbnails loading at once). Direct inspection of
+stored images confirmed R5's own estimate had landed at the high end: every
+dish photo was a 1024x1024, **lossless PNG, 1.4-1.9MB** — and the *same*
+full file was being served for both the final-recipe-tab photo and every
+session-list thumbnail. The "thumbnail" was never a separate, smaller
+asset — per spec, it's a CSS crop of the full image (`object-fit`/
+`object-position`, focal point from `dishImage.focalX`/`focalY`) applied
+entirely at display time, so a list row showing a thumbnail was still
+downloading the complete 1.5MB file behind it.
+
+**Why R5 didn't already fix this**: the original plan deliberately excluded
+any image-processing library ("Hard Constraint: no `sharp`") to keep
+feature 007's scope small, before this was a measured problem — R5 could
+only ask the model itself for a smaller/different format via a hypothetical
+API parameter, which this integration path (chat-completions with
+`modalities`, not the dedicated image endpoint — see R1) doesn't expose.
+
+**Fix**: revisited the "no `sharp`" constraint with the user, who approved
+adding it now that the cost is real and measured, not hypothetical. Every
+generated image is now re-encoded before storage
+(`lib/agent/nodes/finalize.ts`): resized to fit within 1024x1024 (a light
+safety cap, not the main lever — the model's own output is already close
+to that) and converted to WebP at quality 80. Photographic content
+compresses dramatically better as WebP than as lossless PNG — typically an
+80-95% size reduction with no visible quality loss — so this addresses the
+measured problem directly without any architecture change: same `images`
+table shape, same signed-URL route, same `dishImage` schema, same
+CSS-crop-at-display-time thumbnail approach. A resize/re-encode failure
+(corrupt bytes, an unrecognized format) is just another image failure,
+caught by `tryGenerateDishImage`'s own existing outer catch — never a stage
+failure, consistent with every other way this function can fail (R2/R3).
+Deliberately **not** a separate, additionally-generated small thumbnail
+file — that would need a second stored variant, a second signed-URL
+concept, and a `dishImage` schema change with backward-compat handling for
+existing checkpoints, none of which is justified until the single-file fix
+proves insufficient.
+
+**Backfill (added right after, once asked for)**: `scripts/backfill-image-webp.ts`
+(`npm run backfill:image-webp`) re-encodes every already-stored non-WebP
+row in place, using the exact same `IMAGE_MAX_DIMENSION_PX`/
+`IMAGE_WEBP_QUALITY` constants `finalize.ts` exports for this purpose —
+never a second, separately-picked pair of numbers. `image_id` is never
+touched (only `bytes`/`mime` on the existing row), so nothing else needs
+updating: `dishImage.imageId` in every checkpoint and
+`sessions.thumbnail_image_id` both keep pointing at the same row, unaware
+anything changed underneath them. Idempotent (filters on `mime <>
+'image/webp'`, so a re-run only touches whatever's left) and tolerant of a
+single bad row (a decode failure is logged and skipped, not fatal to the
+run — see `tests/unit/backfill-image-webp.test.ts`).
+
+**Still not addressed**: signed URLs are re-minted (different `exp`/`sig`
+query string) on every `/mine`/`/state` call even for the same underlying
+image, which defeats the existing 24h `Cache-Control` on repeat views of
+the same list — a separate, smaller optimization (stabilizing the signed
+URL so the browser's own cache can actually hit) that wasn't in scope for
+this pass.
+
+**Test coverage**: `tests/unit/finalize.test.ts`'s mocked "success" image
+responses were switched from a placeholder string to a real, valid 1x1 PNG
+fixture — `sharp` throws on genuinely invalid bytes, which would have made
+every success-path test wrongly see `dishImage: null` once real re-encoding
+ran on the mocked response. A new test asserts `insertImage` is called with
+`mime: "image/webp"` and real, non-empty re-encoded bytes (not the
+fixture's own bytes passed straight through), confirming `sharp` actually
+ran rather than silently short-circuiting.
